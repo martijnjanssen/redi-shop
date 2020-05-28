@@ -3,6 +3,8 @@ package server
 import (
 	"fmt"
 
+	"github.com/martijnjanssen/redi-shop/order"
+
 	"github.com/fasthttp/router"
 	"github.com/martijnjanssen/redi-shop/stock"
 	"github.com/martijnjanssen/redi-shop/user"
@@ -27,17 +29,18 @@ func getUserRouter(conn *util.Connection) fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getOrderRouter(_ *util.Connection) fasthttp.RequestHandler {
+func getOrderRouter(conn *util.Connection) fasthttp.RequestHandler {
+	h := order.NewRouteHandler(conn)
+
 	r := router.New()
 	r.PanicHandler = panicHandler
 
-	// TODO: Implement
-	r.POST("/orders/create/{user_id}", nil)
-	r.DELETE("/orders/remove/{order_id}", nil)
-	r.GET("/orders/find/{order_id}", nil)
-	r.POST("/orders/additem/{order_id}/{item_id}", nil)
-	r.DELETE("/orders/removeitem/{order_id}/{item_id}", nil)
-	r.POST("/orders/checkout/{order_id}", nil)
+	r.POST("/orders/create/{user_id}", h.CreateOrder)
+	r.DELETE("/orders/remove/{order_id}", h.RemoveOrder)
+	r.GET("/orders/find/{order_id}", h.FindOrder)
+	r.POST("/orders/additem/{order_id}/{item_id}", h.AddOrderItem)
+	r.DELETE("/orders/removeitem/{order_id}/{item_id}", h.RemoveOrderItem)
+	r.POST("/orders/checkout/{order_id}", h.CheckoutOrder)
 
 	return r.Handler
 }
