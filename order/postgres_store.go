@@ -5,6 +5,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/util"
 	"github.com/valyala/fasthttp"
+	"strings"
 )
 
 type postgresOrderStore struct {
@@ -25,6 +26,7 @@ func newPostgresOrderStore(db *gorm.DB) *postgresOrderStore{
 func (s *postgresOrderStore) Create(ctx *fasthttp.RequestCtx, userID string) {
 	order := &Order{
 		UserID: userID,
+		Items: "",
 	}
 	err := s.db.Model(&Order{}).
 		Create(order).
@@ -34,8 +36,8 @@ func (s *postgresOrderStore) Create(ctx *fasthttp.RequestCtx, userID string) {
 		return
 	}
 
-	response := fmt.Sprintf("{\"order_id\" : \"#{order.ID}\"}")
-	util.StringResponse(ctx, fasthttp.StatusCreated, response)
+	response := fmt.Sprintf("{\"order_id\" : %s}", order.ID)
+	util.JsonResponse(ctx, fasthttp.StatusCreated, response)
 }
 
 func (s *postgresOrderStore) Remove(ctx *fasthttp.RequestCtx, orderID string){
@@ -43,7 +45,8 @@ func (s *postgresOrderStore) Remove(ctx *fasthttp.RequestCtx, orderID string){
 		Delete(&Order{ID: orderID}).
 		Error
 	if err != nil {
-		util.InternalServerError(ctx)
+		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		return
 	}
 
 	util.StringResponse(ctx, fasthttp.StatusOK, "success")
@@ -63,19 +66,37 @@ func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string){
 		return
 	}
 
-	response := fmt.Sprintf("{\"order_id\" : %d, \"paid\": %d, \"items\": %d, \"user_id\": %d, \"total_cost\": %d}", order.ID, order.Paid, order.Items, order.UserID, order.Cost)
+	response := fmt.Sprintf("{\"order_id\" : %s, \"paid\": %t, \"items\": %s, \"user_id\": %s, \"total_cost\": %d}", order.ID, order.Paid, order.Items, order.UserID, order.Cost)
 	util.JsonResponse(ctx, fasthttp.StatusOK, response)
 
 }
 
 func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, itemID string){
-	//todo: check this out, how to update a list? And with an item object or just add ID?
+	order := &Order{}
 	err := s.db.Model(&Order{}).
 		Where("id = ?", orderID).
-		Update("items", gorm.Expr("items + ?", itemID)).
+		First(order).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
+		util.StringResponse(ctx, fasthttp.StatusNotFound, "failure")
+		return
+	} else if err != nil {
+		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		return
+	}
+
+	items := stringToMap(order.Items)
+
+	//voeg item toe aan map
+	items[orderID] = true
+
+
+	err = s.db.Model(&Order{}).
+		Where("id = ?", orderID).
+		Update("items", mapToString(items)).
+		Error
+	if err == gorm.ErrRecordNotFound {
+		util.StringResponse(ctx, fasthttp.StatusNotFound, "failure")
 		return
 	} else if err != nil {
 		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
@@ -93,23 +114,60 @@ func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string
 		First(order).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
+		util.StringResponse(ctx, fasthttp.StatusNotFound, "failure")
 		return
 	} else if err != nil {
-		util.InternalServerError(ctx)
+		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
 		return
 	}
 
-	//todo: same problem as with add item. How to update?
+	items := stringToMap(order.Items)
 
+	// delete a map
+	delete(items, itemID)
 
+	err = s.db.Model(&Order{}).
+		Where("id = ?", orderID).
+		Update("items", mapToString(items)).
+		Error
+	if err == gorm.ErrRecordNotFound {
+		util.StringResponse(ctx, fasthttp.StatusNotFound, "failure")
+		return
+	} else if err != nil {
+		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		return
+	}
+
+	util.StringResponse(ctx, fasthttp.StatusOK, "success")
 
 }
 
+
 func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string){
-	// make the payment (via payment service
+	// make the payment (via payment service)
 
 	// subtract stock via stock service
 
 	// return status
+}
+
+func stringToMap(itemString string) map[string]bool {
+	items := strings.Split(itemString, ",")
+	m := map[string]bool{}
+
+	for _,item := range items {
+		m[item] = true
+	}
+
+	return m
+}
+
+func mapToString(items map[string]bool) string {
+	s := ""
+
+	for item,_ := range items {
+		s = fmt.Sprintf("%s,%s", s, item)
+	}
+
+	return s
 }
