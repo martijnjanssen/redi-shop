@@ -35,8 +35,7 @@ func (s *postgresOrderStore) Create(ctx *fasthttp.RequestCtx, userID string) {
 		return
 	}
 
-	response := fmt.Sprintf("{\"order_id\" : %s}", order.ID)
-	util.JsonResponse(ctx, fasthttp.StatusCreated, response)
+	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"order_id\" : %s}", order.ID))
 }
 
 func (s *postgresOrderStore) Remove(ctx *fasthttp.RequestCtx, orderID string) {
@@ -44,11 +43,11 @@ func (s *postgresOrderStore) Remove(ctx *fasthttp.RequestCtx, orderID string) {
 		Delete(&Order{ID: orderID}).
 		Error
 	if err != nil {
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.Ok(ctx)
 }
 
 func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
@@ -77,7 +76,7 @@ func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 	items = items[:len(items)-1] + "]"
 
 	response := fmt.Sprintf("{\"order_id\" : %s, \"paid\": %t, \"items\": %s, \"user_id\": %s, \"total_cost\": %d}", order.ID, order.Paid, items, order.UserID, order.Cost)
-	util.JsonResponse(ctx, fasthttp.StatusOK, response)
+	util.JSONResponse(ctx, fasthttp.StatusOK, response)
 
 }
 
@@ -89,10 +88,10 @@ func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, i
 		First(order).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		util.StringResponse(ctx, fasthttp.StatusNotFound, "failure")
+		util.NotFound(ctx)
 		return
 	} else if err != nil {
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
@@ -101,14 +100,14 @@ func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, i
 		Update("items", append(order.Items, stock.Stock{ID: itemID})).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		util.StringResponse(ctx, fasthttp.StatusNotFound, "failure")
+		util.NotFound(ctx)
 		return
 	} else if err != nil {
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
+	util.Ok(ctx)
 }
 
 func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, itemID string) {
@@ -118,10 +117,10 @@ func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string
 		First(order).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		util.StringResponse(ctx, fasthttp.StatusNotFound, "failure")
+		util.NotFound(ctx)
 		return
 	} else if err != nil {
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
@@ -141,15 +140,14 @@ func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string
 		Update("items", items).
 		Error
 	if err == gorm.ErrRecordNotFound {
-		util.StringResponse(ctx, fasthttp.StatusNotFound, "failure")
+		util.NotFound(ctx)
 		return
 	} else if err != nil {
-		util.StringResponse(ctx, fasthttp.StatusInternalServerError, "failure")
+		util.InternalServerError(ctx)
 		return
 	}
 
-	util.StringResponse(ctx, fasthttp.StatusOK, "success")
-
+	util.Ok(ctx)
 }
 
 // NOTE: function is highly experimental, has to be changed/tweaked to handle transactions and other services better
@@ -183,7 +181,8 @@ func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) 
 		}
 		if status != fasthttp.StatusOK {
 			// TODO: Maybe relay the response?
-			util.StringResponse(ctx, status, "")
+			ctx.SetStatusCode(status)
+			return
 		}
 	}
 
@@ -197,9 +196,10 @@ func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) 
 	}
 	if status != fasthttp.StatusOK {
 		// TODO: Maybe relay the response?
-		util.StringResponse(ctx, status, "")
+		ctx.SetStatusCode(status)
+		return
 	}
 
 	// TODO: Commit transaction
-	util.StringResponse(ctx, fasthttp.StatusOK, "")
+	util.Ok(ctx)
 }
