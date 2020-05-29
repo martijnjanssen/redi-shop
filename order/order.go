@@ -1,10 +1,9 @@
 package order
 
 type Order struct {
-	ID				string
-	Paid 			bool
-	Items 			string
-	UserID 			string
-	Cost			int
+	ID     string
+	UserID string
+	Paid   bool
+	Items  string
+	Cost   int
 }
-

@@ -2,17 +2,18 @@ package order
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/util"
 	"github.com/valyala/fasthttp"
-	"strings"
 )
 
 type postgresOrderStore struct {
 	db *gorm.DB
 }
 
-func newPostgresOrderStore(db *gorm.DB) *postgresOrderStore{
+func newPostgresOrderStore(db *gorm.DB) *postgresOrderStore {
 	err := db.AutoMigrate(&Order{}).Error
 	if err != nil {
 		panic(err)
@@ -22,11 +23,10 @@ func newPostgresOrderStore(db *gorm.DB) *postgresOrderStore{
 	}
 }
 
-
 func (s *postgresOrderStore) Create(ctx *fasthttp.RequestCtx, userID string) {
 	order := &Order{
 		UserID: userID,
-		Items: "",
+		Items:  "",
 	}
 	err := s.db.Model(&Order{}).
 		Create(order).
@@ -40,7 +40,7 @@ func (s *postgresOrderStore) Create(ctx *fasthttp.RequestCtx, userID string) {
 	util.JsonResponse(ctx, fasthttp.StatusCreated, response)
 }
 
-func (s *postgresOrderStore) Remove(ctx *fasthttp.RequestCtx, orderID string){
+func (s *postgresOrderStore) Remove(ctx *fasthttp.RequestCtx, orderID string) {
 	err := s.db.Model(&Order{}).
 		Delete(&Order{ID: orderID}).
 		Error
@@ -52,7 +52,7 @@ func (s *postgresOrderStore) Remove(ctx *fasthttp.RequestCtx, orderID string){
 	util.StringResponse(ctx, fasthttp.StatusOK, "success")
 }
 
-func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string){
+func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 	order := &Order{}
 	err := s.db.Model(&Order{}).
 		Where("id = ?", orderID).
@@ -71,7 +71,7 @@ func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string){
 
 }
 
-func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, itemID string){
+func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, itemID string) {
 	order := &Order{}
 	err := s.db.Model(&Order{}).
 		Where("id = ?", orderID).
@@ -85,11 +85,9 @@ func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, i
 		return
 	}
 
+	// Convert items and add item to the map
 	items := stringToMap(order.Items)
-
-	//voeg item toe aan map
 	items[orderID] = true
-
 
 	err = s.db.Model(&Order{}).
 		Where("id = ?", orderID).
@@ -104,10 +102,9 @@ func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, i
 	}
 
 	util.StringResponse(ctx, fasthttp.StatusOK, "success")
-
 }
 
-func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, itemID string){
+func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, itemID string) {
 	order := &Order{}
 	err := s.db.Model(&Order{}).
 		Where("id = ?", orderID).
@@ -121,9 +118,8 @@ func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string
 		return
 	}
 
+	// Convert items and remove the item from the map
 	items := stringToMap(order.Items)
-
-	// delete a map
 	delete(items, itemID)
 
 	err = s.db.Model(&Order{}).
@@ -142,8 +138,7 @@ func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string
 
 }
 
-
-func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string){
+func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) {
 	// make the payment (via payment service)
 
 	// subtract stock via stock service
@@ -155,7 +150,7 @@ func stringToMap(itemString string) map[string]bool {
 	items := strings.Split(itemString, ",")
 	m := map[string]bool{}
 
-	for _,item := range items {
+	for _, item := range items {
 		m[item] = true
 	}
 
@@ -165,7 +160,7 @@ func stringToMap(itemString string) map[string]bool {
 func mapToString(items map[string]bool) string {
 	s := ""
 
-	for item,_ := range items {
+	for item, _ := range items {
 		s = fmt.Sprintf("%s,%s", s, item)
 	}
 
