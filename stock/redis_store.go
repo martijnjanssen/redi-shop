@@ -42,7 +42,6 @@ func (s *redisStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
 
 	response := fmt.Sprintf("{\"id\" : \"%s\"}", ID)
 	util.JSONResponse(ctx, fasthttp.StatusCreated, response)
-	return
 }
 
 func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, ID string, amount int) {
@@ -53,6 +52,7 @@ func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, ID string, amo
 	} else if get.Err() != nil {
 		logrus.WithError(get.Err()).Error("unable to find stock item")
 		util.InternalServerError(ctx)
+		return
 	}
 
 	str, _ := get.Bytes()
@@ -60,7 +60,7 @@ func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, ID string, amo
 	price := jsonParsed.S("price")
 	number := jsonParsed.S("number")
 
-	number_temp, _ := strconv.Atoi(fmt.Sprintf("%s", number))
+	number_temp, _ := strconv.Atoi(number.String())
 	number_temp = number_temp - amount
 
 	if number_temp < 0 {
@@ -89,6 +89,7 @@ func (s *redisStockStore) AddStock(ctx *fasthttp.RequestCtx, ID string, amount i
 	} else if get.Err() != nil {
 		logrus.WithError(get.Err()).Error("unable to find stock item")
 		util.InternalServerError(ctx)
+		return
 	}
 
 	str, _ := get.Bytes()
@@ -96,7 +97,7 @@ func (s *redisStockStore) AddStock(ctx *fasthttp.RequestCtx, ID string, amount i
 	price := jsonParsed.S("price")
 	number := jsonParsed.S("number")
 
-	number_temp, _ := strconv.Atoi(fmt.Sprintf("%s", number))
+	number_temp, _ := strconv.Atoi(number.String())
 	number_temp = number_temp + amount
 
 	json := fmt.Sprintf("{\"price\" : %s, \"number\": %s}", price, strconv.Itoa(number_temp))
