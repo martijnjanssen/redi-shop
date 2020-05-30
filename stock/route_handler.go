@@ -18,9 +18,19 @@ type stockRouteHandler struct {
 }
 
 func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
-	return &stockRouteHandler{
-		stockStore: newPostgresStockStore(conn.Postgres),
+	var store stockStore
+
+	switch conn.Backend {
+	case util.POSTGRES:
+		store = newPostgresStockStore(conn.Postgres)
+	case util.REDIS:
+		store = newRedisStockStore(conn.Redis)
 	}
+
+	return &stockRouteHandler{
+		stockStore: store,
+	}
+
 }
 
 // Returns success/failure, depending on the price status.
