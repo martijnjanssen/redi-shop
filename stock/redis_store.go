@@ -3,8 +3,8 @@ package stock
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
-	"github.com/Jeffail/gabs"
 	"github.com/go-redis/redis"
 	"github.com/gofrs/uuid"
 	"github.com/martijnjanssen/redi-shop/util"
@@ -25,7 +25,7 @@ func newRedisStockStore(c *redis.Client) *redisStockStore {
 
 func (s *redisStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
 	ID := uuid.Must(uuid.NewV4()).String()
-	json := fmt.Sprintf("{\"price\" : %d, \"number\": %d}", price, 0)
+	json := fmt.Sprintf("{\"price\":%d, \"stock\":%d}", price, 0)
 
 	set := s.store.SetNX(ID, json, 0)
 	if set.Err() != nil {
@@ -40,7 +40,7 @@ func (s *redisStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
 		return
 	}
 
-	response := fmt.Sprintf("{\"id\" : \"%s\"}", ID)
+	response := fmt.Sprintf("{\"id\":\"%s\"}", ID)
 	util.JSONResponse(ctx, fasthttp.StatusCreated, response)
 }
 
@@ -55,22 +55,25 @@ func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, ID string, amo
 		return
 	}
 
-	str, _ := get.Bytes()
-	jsonParsed, _ := gabs.ParseJSON(str)
-	price := jsonParsed.S("price")
-	number := jsonParsed.S("number")
+	json := get.Val()
+	jsonSplit := strings.Split(json, ":")
+	stockString := jsonSplit[2]
+	stock, err := strconv.Atoi(stockString[0 : len(stockString)-1])
+	if err != nil {
+		logrus.WithError(err).Error("cannot parse stock amount")
+		util.InternalServerError(ctx)
+		return
+	}
 
-	number_temp, _ := strconv.Atoi(number.String())
-	number_temp = number_temp - amount
-
-	if number_temp < 0 {
+	if stock-amount < 0 {
 		util.BadRequest(ctx)
 		return
 	}
 
-	json := fmt.Sprintf("{\"price\" : %s, \"number\": %s}", price, strconv.Itoa(number_temp))
+	jsonSplit[2] = fmt.Sprintf("%d}", stock-amount)
+	updatedJson := strings.Join(jsonSplit, ":")
 
-	set := s.store.Set(ID, json, 0)
+	set := s.store.Set(ID, updatedJson, 0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update stock item")
 		util.InternalServerError(ctx)
@@ -92,17 +95,18 @@ func (s *redisStockStore) AddStock(ctx *fasthttp.RequestCtx, ID string, amount i
 		return
 	}
 
-	str, _ := get.Bytes()
-	jsonParsed, _ := gabs.ParseJSON(str)
-	price := jsonParsed.S("price")
-	number := jsonParsed.S("number")
-
-	number_temp, _ := strconv.Atoi(number.String())
-	number_temp = number_temp + amount
-
-	json := fmt.Sprintf("{\"price\" : %s, \"number\": %s}", price, strconv.Itoa(number_temp))
-
-	set := s.store.Set(ID, json, 0)
+	json := get.Val()
+	jsonSplit := strings.Split(json, ":")
+	stockString := jsonSplit[2]
+	stock, err := strconv.Atoi(stockString[0 : len(stockString)-1])
+	if err != nil {
+		logrus.WithError(err).Error("cannot parse stock amount")
+		util.InternalServerError(ctx)
+		return
+	}
+	jsonSplit[2] = fmt.Sprintf("%d}", (stock + amount))
+	updatedJson := strings.Join(jsonSplit, ":")
+	set := s.store.Set(ID, updatedJson, 0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update stock item")
 		util.InternalServerError(ctx)
@@ -122,12 +126,6 @@ func (s *redisStockStore) Find(ctx *fasthttp.RequestCtx, ID string) {
 		util.InternalServerError(ctx)
 		return
 	}
-	str, _ := get.Bytes()
-	jsonParsed, _ := gabs.ParseJSON(str)
-	price := jsonParsed.S("price")
-	amount := jsonParsed.S("number")
 
-	response := fmt.Sprintf("{\"price\" : %s, \"number\": %s}", price, amount)
-
-	util.JSONResponse(ctx, fasthttp.StatusOK, response)
+	util.JSONResponse(ctx, fasthttp.StatusOK, get.Val())
 }
