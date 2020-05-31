@@ -36,7 +36,7 @@ func (s *postgresStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
 		return
 	}
 
-	response := fmt.Sprintf("{\"id\" : \"%s\"}", stock.ID)
+	response := fmt.Sprintf("{\"item_id\" : \"%s\"}", stock.ID)
 	util.JSONResponse(ctx, fasthttp.StatusCreated, response)
 }
 
@@ -54,7 +54,7 @@ func (s *postgresStockStore) Find(ctx *fasthttp.RequestCtx, itemID string) {
 		return
 	}
 
-	response := fmt.Sprintf("{\"price\" : %d, \"number\": %d}", stock.Price, stock.Number)
+	response := fmt.Sprintf("{\"price\" : %d, \"stock\": %d}", stock.Price, stock.Number)
 	util.JSONResponse(ctx, fasthttp.StatusOK, response)
 }
 
