@@ -40,7 +40,7 @@ func (s *redisStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
 		return
 	}
 
-	response := fmt.Sprintf("{\"id\":\"%s\"}", ID)
+	response := fmt.Sprintf("{\"item_id\":\"%s\"}", ID)
 	util.JSONResponse(ctx, fasthttp.StatusCreated, response)
 }
 
