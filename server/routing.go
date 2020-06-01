@@ -23,6 +23,7 @@ func getUserRouter(conn *util.Connection) fasthttp.RequestHandler {
 	r.DELETE("/users/remove/{user_id}", h.RemoveUser)
 	r.GET("/users/find/{user_id}", h.FindUser)
 
+	r.GET("/users/credit/{user_id}", h.GetUserCredit)
 	r.POST("/users/credit/subtract/{user_id}/{amount}", h.SubtractUserCredit)
 	r.POST("/users/credit/add/{user_id}/{amount}", h.AddUserCredit)
 
@@ -61,12 +62,13 @@ func getStockRouter(conn *util.Connection) fasthttp.RequestHandler {
 
 func getPaymentRouter(_ *util.Connection) fasthttp.RequestHandler {
 	r := router.New()
+	h := payment.NewRouteHandler(db)
 	r.PanicHandler = panicHandler
 
-	// TODO: Implement
-	r.POST("/payment/pay/{user_id}/{order_id}", nil)
-	r.POST("/payment/cancel/{user_id}/{order_id}", nil)
-	r.GET("/payment/status/{order_id}", nil)
+
+	r.POST("/payment/pay/{user_id}/{order_id}/{amount}", h.PayForOrder)
+	r.POST("/payment/cancel/{user_id}/{order_id}", h.CancelOrder)
+	r.GET("/payment/status/{order_id}", h.GetPaymentStatus)
 
 	return r.Handler
 }
