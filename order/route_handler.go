@@ -19,8 +19,17 @@ type orderRouteHandler struct {
 }
 
 func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
+	var store orderStore
+
+	switch conn.Backend {
+	case util.POSTGRES:
+		store = newPostgresOrderStore(conn.Postgres)
+	case util.REDIS:
+		panic("NOT IMPLEMENTED")
+	}
+
 	return &orderRouteHandler{
-		orderStore: newPostgresOrderStore(conn.Postgres),
+		orderStore: store,
 	}
 }
 
