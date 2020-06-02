@@ -1,10 +1,11 @@
 package payment
 
-type paymentStore struct {
-	ID     string `sql:"type:uuid;primary_key;default:uuid_generate_v4()"`
-	amount   int
+type Payment struct {
+	OrderID  string `sql:"type:uuid;primary_key"`
+	Amount   int
+	Status   string
 }
 
-func newPaymentStore() *paymentStore {
-	return &paymentStore{}
-}
+// func newPaymentStore() *paymentStore {
+// 	return &paymentStore{}
+// }
