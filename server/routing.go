@@ -6,6 +6,7 @@ import (
 	"github.com/martijnjanssen/redi-shop/order"
 
 	"github.com/fasthttp/router"
+	"github.com/martijnjanssen/redi-shop/payment"
 	"github.com/martijnjanssen/redi-shop/stock"
 	"github.com/martijnjanssen/redi-shop/user"
 	"github.com/martijnjanssen/redi-shop/util"
@@ -23,7 +24,6 @@ func getUserRouter(conn *util.Connection) fasthttp.RequestHandler {
 	r.DELETE("/users/remove/{user_id}", h.RemoveUser)
 	r.GET("/users/find/{user_id}", h.FindUser)
 
-	r.GET("/users/credit/{user_id}", h.GetUserCredit)
 	r.POST("/users/credit/subtract/{user_id}/{amount}", h.SubtractUserCredit)
 	r.POST("/users/credit/add/{user_id}/{amount}", h.AddUserCredit)
 
@@ -60,13 +60,13 @@ func getStockRouter(conn *util.Connection) fasthttp.RequestHandler {
 	return r.Handler
 }
 
-func getPaymentRouter(_ *util.Connection) fasthttp.RequestHandler {
+func getPaymentRouter(conn *util.Connection) fasthttp.RequestHandler {
+	h := payment.NewRouteHandler(conn)
+
 	r := router.New()
-	h := payment.NewRouteHandler(db)
 	r.PanicHandler = panicHandler
 
-
-	r.POST("/payment/pay/{user_id}/{order_id}/{amount}", h.PayForOrder)
+	r.POST("/payment/pay/{user_id}/{order_id}/{amount}", h.PayOrder)
 	r.POST("/payment/cancel/{user_id}/{order_id}", h.CancelOrder)
 	r.GET("/payment/status/{order_id}", h.GetPaymentStatus)
 

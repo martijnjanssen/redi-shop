@@ -2,6 +2,7 @@ package payment
 
 import (
 	"fmt"
+
 	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/util"
 	"github.com/valyala/fasthttp"
@@ -24,35 +25,47 @@ func newPostgresPaymentStore(db *gorm.DB) *postgresPaymentStore {
 }
 
 func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orderID string, amount int) {
+	exists := false
 	payment := &Payment{}
 	err := s.db.Model(&Payment{}).
-	Where("id = ?", userID).
-		First(user).
+		Where("id = ?", userID).
+		First(payment).
 		Error
-
 	if err == gorm.ErrRecordNotFound {
-			util.NotFound(ctx)
-			return
+		// Do nothing, record has to be created
+		exists = false
 	} else if err != nil {
-			util.InternalServerError(ctx)
-			return
+		util.InternalServerError(ctx)
+		return
 	}
 
-c := fasthttp.Client{}
-status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/users/credit/subtract/%s/%d", userID, amount), nil)
-if err != nil{
-	util.InternalServerError(ctx)
-	return
-}
-if status != fasthttp.StatusOK {
-	util.StringResponse(ctx, status, "")
-	return
-}
+	// If record is found, check that it is not already paid
+	if exists && payment.Status == "paid" {
+		util.BadRequest(ctx)
+		return
+	}
 
-payment := &Payment{OrderID:orderID, Amount:amount, Status:"paid"}
-err := s.db.Model(&Payment{}).
-	   Create(payment).
-	   Error
+	c := fasthttp.Client{}
+	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/users/credit/subtract/%s/%d", userID, amount), nil)
+	if err != nil {
+		util.InternalServerError(ctx)
+		return
+	} else if status != fasthttp.StatusOK {
+		ctx.SetStatusCode(status)
+		return
+	}
+
+	payment = &Payment{OrderID: orderID, Amount: amount, Status: "paid"}
+	q := s.db.Model(&Payment{})
+	// If it exists, update, otherwise, create
+	if exists {
+		q = q.
+			Where("order_id = ?", payment.OrderID).
+			Update("status", payment.Status)
+	} else {
+		q = q.Create(payment)
+	}
+	err = q.Error
 	if err != nil {
 		util.InternalServerError(ctx)
 		return
@@ -62,10 +75,10 @@ err := s.db.Model(&Payment{}).
 }
 
 func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, orderID string) {
-	// TODO: retrieve the payment which needs to be cancelled
+	// Retrieve the payment which needs to be cancelled
 	payment := &Payment{}
 	err := s.db.Model(&Payment{}).
-		Where("order_id = ?" orderID).
+		Where("order_id = ?", orderID).
 		First(payment).
 		Error
 	if err == gorm.ErrRecordNotFound {
@@ -76,24 +89,25 @@ func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, o
 		return
 	}
 
-	if payment.status == "cancelled" {
+	if payment.Status == "cancelled" {
 		util.BadRequest(ctx)
 		return
 	}
 
-	// TODO: add the credit back to the user
+	// Refund the credit to the user
 	c := fasthttp.Client{}
-	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/users/credit/add/%s/%d", userID, payment.amount), nil)
-	if err != nil{
+	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/users/credit/add/%s/%d", userID, payment.Amount), nil)
+	if err != nil {
 		util.InternalServerError(ctx)
 		return
 	}
 	if status != fasthttp.StatusOK {
-		util.StringResponse(ctx, status, "")
+		ctx.SetStatusCode(status)
 		return
 	}
-	// TODO: update the status of the payment as "cancelled"
-	err := s.db.Model(&Payment{}).
+
+	// Update the status of the payment to "cancelled"
+	err = s.db.Model(&Payment{}).
 		Where("order_id = ?", orderID).
 		Update("status", "cancelled").
 		Error
@@ -111,8 +125,8 @@ func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, o
 func (s *postgresPaymentStore) PaymentStatus(ctx *fasthttp.RequestCtx, orderID string) {
 	payment := &Payment{}
 	err := s.db.Model(&Payment{}).
-	Where("order_id = ?", orderID).
-	Error
+		Where("order_id = ?", orderID).
+		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
 		return
@@ -121,11 +135,10 @@ func (s *postgresPaymentStore) PaymentStatus(ctx *fasthttp.RequestCtx, orderID s
 		return
 	}
 	paid := "false"
-	
-	if payment.status == "paid" {
+
+	if payment.Status == "paid" {
 		paid = "true"
 	}
-	
+
 	util.JSONResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("{\"paid\": %s}", paid))
 }
-	
