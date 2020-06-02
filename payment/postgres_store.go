@@ -37,18 +37,22 @@ func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orde
 			util.InternalServerError(ctx)
 			return
 	}
-}
 
-if user.credit-amount < 0 {
-	util.BadRequest(ctx)
+c := fasthttp.Client{}
+status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/users/credit/subtract/%s/%d", userID, amount), nil)
+if err != nil{
+	util.InternalServerError(ctx)
+	return
+}
+if status != fasthttp.StatusOK {
+	util.StringResponse(ctx, status, "")
 	return
 }
 
+payment := &Payment{OrderID:orderID, Amount:amount, Status:"paid"}
 err := s.db.Model(&Payment{}).
-Where("id = ?", userID).
-		Update("amount", gorm.Expr("credit - ?", amount)).
-		Error
-
+	   Create(payment).
+	   Error
 	if err != nil {
 		util.InternalServerError(ctx)
 		return
@@ -58,12 +62,12 @@ Where("id = ?", userID).
 }
 
 func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, orderID string) {
+	// TODO: retrieve the payment which needs to be cancelled
 	payment := &Payment{}
 	err := s.db.Model(&Payment{}).
-	Where("id = ?", orderID).
+		Where("order_id = ?" orderID).
 		First(payment).
 		Error
-
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
 		return
@@ -71,17 +75,57 @@ func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, o
 		util.InternalServerError(ctx)
 		return
 	}
-}
 
-err = s.db.Model(&Payment{}).
-		Where("userID = ? AND orderID = ?", userID, orderID).
-		Update("status", gorm.Expr("cancel")).
+	if payment.status == "cancelled" {
+		util.BadRequest(ctx)
+		return
+	}
+
+	// TODO: add the credit back to the user
+	c := fasthttp.Client{}
+	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/users/credit/add/%s/%d", userID, payment.amount), nil)
+	if err != nil{
+		util.InternalServerError(ctx)
+		return
+	}
+	if status != fasthttp.StatusOK {
+		util.StringResponse(ctx, status, "")
+		return
+	}
+	// TODO: update the status of the payment as "cancelled"
+	err := s.db.Model(&Payment{}).
+		Where("order_id = ?", orderID).
+		Update("status", "cancelled").
 		Error
-
-	if err != nil {
+	if err == gorm.ErrRecordNotFound {
+		util.NotFound(ctx)
+		return
+	} else if err != nil {
 		util.InternalServerError(ctx)
 		return
 	}
 
 	util.Ok(ctx)
 }
+
+func (s *postgresPaymentStore) PaymentStatus(ctx *fasthttp.RequestCtx, orderID string) {
+	payment := &Payment{}
+	err := s.db.Model(&Payment{}).
+	Where("order_id = ?", orderID).
+	Error
+	if err == gorm.ErrRecordNotFound {
+		util.NotFound(ctx)
+		return
+	} else if err != nil {
+		util.InternalServerError(ctx)
+		return
+	}
+	paid := "false"
+	
+	if payment.status == "paid" {
+		paid = "true"
+	}
+	
+	util.JSONResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("{\"paid\": %s}", paid))
+}
+	
