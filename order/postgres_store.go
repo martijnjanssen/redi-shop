@@ -188,24 +188,6 @@ func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) 
 	}
 
 	c := fasthttp.Client{}
-	items := itemStringToMap(order.Items)
-
-	// Subtract stock for each item in the order
-	for k := range items {
-		status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/stock/subtract/%s/1", k), nil)
-		if err != nil {
-			// TODO: Abort transaction here
-
-			util.InternalServerError(ctx)
-			return
-		}
-		if status != fasthttp.StatusOK {
-			// TODO: Maybe relay the response?
-			ctx.SetStatusCode(status)
-			return
-		}
-	}
-
 	// Make the payment
 	status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/payment/pay/%s/%s/%d", order.UserID, orderID, order.Cost), nil)
 	if err != nil {
@@ -230,6 +212,23 @@ func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) 
 	} else if err != nil {
 		util.InternalServerError(ctx)
 		return
+	}
+
+	// Subtract stock for each item in the order
+	items := itemStringToMap(order.Items)
+	for k := range items {
+		status, _, err := c.Post([]byte{}, fmt.Sprintf("http://localhost/stock/subtract/%s/1", k), nil)
+		if err != nil {
+			// TODO: Abort transaction here
+
+			util.InternalServerError(ctx)
+			return
+		}
+		if status != fasthttp.StatusOK {
+			// TODO: Maybe relay the response?
+			ctx.SetStatusCode(status)
+			return
+		}
 	}
 
 	// TODO: Commit transaction
