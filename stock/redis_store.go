@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/gofrs/uuid"
 	"github.com/martijnjanssen/redi-shop/util"
 	"github.com/sirupsen/logrus"
@@ -25,9 +25,9 @@ func newRedisStockStore(c *redis.Client) *redisStockStore {
 
 func (s *redisStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
 	ID := uuid.Must(uuid.NewV4()).String()
-	json := fmt.Sprintf("{\"price\":%d, \"stock\":%d}", price, 0)
+	json := fmt.Sprintf("{\"price\": %d, \"stock\": 0}", price)
 
-	set := s.store.SetNX(ID, json, 0)
+	set := s.store.SetNX(ctx, ID, json, 0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to create stock item")
 		util.InternalServerError(ctx)
@@ -40,12 +40,12 @@ func (s *redisStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
 		return
 	}
 
-	response := fmt.Sprintf("{\"item_id\":\"%s\"}", ID)
+	response := fmt.Sprintf("{\"item_id\": \"%s\"}", ID)
 	util.JSONResponse(ctx, fasthttp.StatusCreated, response)
 }
 
 func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, ID string, amount int) {
-	get := s.store.Get(ID)
+	get := s.store.Get(ctx, ID)
 	if get.Err() == redis.Nil {
 		util.NotFound(ctx)
 		return
@@ -56,7 +56,7 @@ func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, ID string, amo
 	}
 
 	json := get.Val()
-	jsonSplit := strings.Split(json, ":")
+	jsonSplit := strings.Split(json, ": ")
 	stockString := jsonSplit[2]
 	stock, err := strconv.Atoi(stockString[0 : len(stockString)-1])
 	if err != nil {
@@ -71,9 +71,9 @@ func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, ID string, amo
 	}
 
 	jsonSplit[2] = fmt.Sprintf("%d}", stock-amount)
-	updatedJson := strings.Join(jsonSplit, ":")
+	updatedJson := strings.Join(jsonSplit, ": ")
 
-	set := s.store.Set(ID, updatedJson, 0)
+	set := s.store.Set(ctx, ID, updatedJson, 0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update stock item")
 		util.InternalServerError(ctx)
@@ -85,7 +85,7 @@ func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, ID string, amo
 }
 
 func (s *redisStockStore) AddStock(ctx *fasthttp.RequestCtx, ID string, amount int) {
-	get := s.store.Get(ID)
+	get := s.store.Get(ctx, ID)
 	if get.Err() == redis.Nil {
 		util.NotFound(ctx)
 		return
@@ -96,7 +96,7 @@ func (s *redisStockStore) AddStock(ctx *fasthttp.RequestCtx, ID string, amount i
 	}
 
 	json := get.Val()
-	jsonSplit := strings.Split(json, ":")
+	jsonSplit := strings.Split(json, ": ")
 	stockString := jsonSplit[2]
 	stock, err := strconv.Atoi(stockString[0 : len(stockString)-1])
 	if err != nil {
@@ -105,8 +105,8 @@ func (s *redisStockStore) AddStock(ctx *fasthttp.RequestCtx, ID string, amount i
 		return
 	}
 	jsonSplit[2] = fmt.Sprintf("%d}", (stock + amount))
-	updatedJson := strings.Join(jsonSplit, ":")
-	set := s.store.Set(ID, updatedJson, 0)
+	updatedJson := strings.Join(jsonSplit, ": ")
+	set := s.store.Set(ctx, ID, updatedJson, 0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update stock item")
 		util.InternalServerError(ctx)
@@ -117,7 +117,7 @@ func (s *redisStockStore) AddStock(ctx *fasthttp.RequestCtx, ID string, amount i
 }
 
 func (s *redisStockStore) Find(ctx *fasthttp.RequestCtx, ID string) {
-	get := s.store.Get(ID)
+	get := s.store.Get(ctx, ID)
 	if get.Err() == redis.Nil {
 		util.NotFound(ctx)
 		return

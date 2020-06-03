@@ -1,7 +1,7 @@
 package util
 
 import (
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/jinzhu/gorm"
 	"github.com/sirupsen/logrus"
 )

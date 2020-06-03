@@ -34,7 +34,7 @@ func (s *postgresUserStore) Create(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"user_id\": %s}", user.ID))
+	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"user_id\": \"%s\"}", user.ID))
 }
 
 func (s *postgresUserStore) Remove(ctx *fasthttp.RequestCtx, userID string) {
@@ -62,7 +62,7 @@ func (s *postgresUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
 		return
 	}
 
-	util.JSONResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("{\"user_id\": %s, \"credit\": %d}", user.ID, user.Credit))
+	util.JSONResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("{\"user_id\": \"%s\", \"credit\": %d}", user.ID, user.Credit))
 }
 
 func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
