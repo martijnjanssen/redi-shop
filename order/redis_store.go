@@ -38,8 +38,7 @@ func (s *redisOrderStore) Create(ctx *fasthttp.RequestCtx, userID string){
 		return
 	}
 
-	response := fmt.Sprintf("{\"order_id\": \"%s\"}", orderID)
-	util.JSONResponse(ctx, fasthttp.StatusCreated, response)
+	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"order_id\": \"%s\"}", orderID))
 }
 
 func (s *redisOrderStore) Remove(ctx *fasthttp.RequestCtx, orderID string){
@@ -104,4 +103,3 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, itemID string){
 
 }
-
