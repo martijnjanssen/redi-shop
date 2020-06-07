@@ -23,7 +23,7 @@ func newOrderStore(c *redis.Client) *redisOrderStore {
 
 func (s *redisOrderStore) Create(ctx *fasthttp.RequestCtx, userID string){
 	orderID :=  uuid.Must(uuid.NewV4()).String()
-	json := fmt.Sprintf("{\"user_id\": \"%s\", \"items\": \"%s\"}", userID, "[]")
+	json := fmt.Sprintf("{\"user_id\": \"%s\", \"items\": \"[]\"}", userID)
 
 	set := s.store.SetNX(ctx, orderID, json, 0)
 	if set.Err() != nil {
@@ -104,5 +104,4 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, itemID string){
 
 }
-
 
