@@ -206,3 +206,95 @@ func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, i
 
 	util.Ok(ctx)
 }
+
+
+func (s* redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string){
+
+	//Get the order
+	getOrder := s.store.Get(ctx, orderID)
+	if getOrder.Err() == redis.Nil {
+		util.NotFound(ctx)
+		return
+	} else if getOrder.Err() != nil {
+		logrus.WithError(getOrder.Err()).Error("unable to get order to add item")
+		util.InternalServerError(ctx)
+		return
+	}
+	// Get the values of the order
+	json := getOrder.Val()
+	jsonSplit := strings.Split(json, ":")
+
+
+	// Check if order is not paid (if it is, return)
+	userIDPart := jsonSplit[1]
+	paidPart := jsonSplit[2]
+	itemsPart := jsonSplit[3]
+	costPart := jsonSplit[4]
+
+	// Parse the cost
+	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
+	if err != nil {
+		logrus.WithError(err).Error("cannot parse order cost")
+		util.InternalServerError(ctx)
+		return
+	}
+
+	// Parse the paid boolean (Question: what if paid? For now simply return)
+	b, err := strconv.ParseBool(paidPart)
+	if b == true {
+		return
+	}
+	if err != nil {
+		logrus.WithError(err).Error("cannot parse paid boolean")
+		util.InternalServerError(ctx)
+		return
+	}
+
+	// Make the payment by calling payment service
+	c := fasthttp.Client{}
+	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/payment/pay/%s/%s/%d", s.urls.Payment, userIDPart, orderID, cost), nil)
+	if err != nil {
+		logrus.WithError(err).Error("unable to pay for the order")
+		util.InternalServerError(ctx)
+		return
+	}
+	if status != fasthttp.StatusOK {
+		logrus.WithField("status", status).Error("error while paying for the order")
+		ctx.SetStatusCode(status)
+		return
+	}
+
+	// Update this order as paid
+	b = true
+	jsonSplit[2] = fmt.Sprintf("%s}", strconv.FormatBool(b))
+
+
+	// Subtract stock for each item in the order (Question: what to with items in the order object?)
+	items := itemStringToMap(itemsPart)
+	for k := range items {
+		status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/stock/subtract/%s/1", s.urls.Stock, k), nil)
+		if err != nil {
+			logrus.WithError(err).Error("unable to subtract stock")
+			util.InternalServerError(ctx)
+			return
+		}
+		if status != fasthttp.StatusOK {
+			logrus.WithField("status", status).Error("error while subtracting stock")
+			ctx.SetStatusCode(status)
+			return
+		}
+	}
+
+	// Commit changes to json order object
+	updatedJson := strings.Join(jsonSplit, ": ")
+	set := s.store.Set(ctx, orderID, updatedJson,0)
+	if set.Err() != nil {
+		logrus.WithError(set.Err()).Error("unable to update order item")
+		util.InternalServerError(ctx)
+		return
+	}
+
+	util.Ok(ctx)
+
+
+}
