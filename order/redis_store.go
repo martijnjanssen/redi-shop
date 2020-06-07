@@ -50,7 +50,6 @@ func (s *redisOrderStore) Remove(ctx *fasthttp.RequestCtx, orderID string){
 	}
 
 	util.Ok(ctx)
-
 }
 
 func (s *redisOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string){
