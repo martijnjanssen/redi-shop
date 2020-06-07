@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/gofrs/uuid"
@@ -117,6 +118,30 @@ func (s *redisStockStore) AddStock(ctx *fasthttp.RequestCtx, ID string, amount i
 }
 
 func (s *redisStockStore) Find(ctx *fasthttp.RequestCtx, ID string) {
+	//Subscribe to channel "user_stock_channel"
+	subscriber := s.store.Subscribe(ctx, "user_stock_channel")
+	// Wait for confirmation that subscription is created before publishing anything.
+	_, errSub := subscriber.Receive(ctx)
+	if errSub != nil {
+		logrus.WithError(errSub).Error("Subscribing of channel failed")
+	}
+	//Channel which receives messages
+	channel := subscriber.Channel()
+
+	//Close the channel after 10 seconds
+	var duration int = 10
+	time.AfterFunc(time.Duration(duration)*time.Second, func() {
+		// When pubsub is closed channel is closed too.
+		fmt.Printf("Closing subscriber after %v seconds\n", duration)
+		_ = subscriber.Close()
+	})
+
+	//Consume a message
+	for msg := range channel {
+		fmt.Println(msg.Channel, msg.Payload)
+	}
+
+	//Proceed once the channel has been closed and message has been received
 	get := s.store.Get(ctx, ID)
 	if get.Err() == redis.Nil {
 		util.NotFound(ctx)
@@ -128,4 +153,5 @@ func (s *redisStockStore) Find(ctx *fasthttp.RequestCtx, ID string) {
 	}
 
 	util.JSONResponse(ctx, fasthttp.StatusOK, get.Val())
+
 }
