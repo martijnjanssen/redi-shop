@@ -74,7 +74,7 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 		util.NotFound(ctx)
 		return
 	} else if get.Err() != nil {
-		logrus.WithError(get.Err()).Error(" unable to get order to add item")
+		logrus.WithError(get.Err()).Error("unable to get order to add item")
 		util.InternalServerError(ctx)
 		return
 	}
