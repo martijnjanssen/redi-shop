@@ -13,6 +13,7 @@ import (
 
 type redisOrderStore struct {
 	store *redis.Client
+	urls *util.Services
 }
 
 func newOrderStore(c *redis.Client) *redisOrderStore {
@@ -67,34 +68,72 @@ func (s *redisOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string){
 }
 
 func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, itemID string){
-	get := s.store.Get(ctx, orderID)
-	if get.Err() == redis.Nil {
+
+	//get the order
+	getOrder := s.store.Get(ctx, orderID)
+	if getOrder.Err() == redis.Nil {
 		util.NotFound(ctx)
 		return
-	} else if get.Err() != nil {
-		logrus.WithError(get.Err()).Error("unable to get order to add item")
+	} else if getOrder.Err() != nil {
+		logrus.WithError(getOrder.Err()).Error("unable to get order to add item")
 		util.InternalServerError(ctx)
 		return
 	}
 
-	// Get the values
-	json := get.Val()
+
+	// Get the values of the order
+	json := getOrder.Val()
 	jsonSplit := strings.Split(json, ":")
-	pricePart := jsonSplit[1] // todo: check if this is the correct part
-	price, err := strconv.Atoi(pricePart[0 : len(pricePart)-1])
+	itemsPart := jsonSplit[3]
+
+	// Get price of the item
+	c := fasthttp.Client{}
+	status, resp, err := c.Get([]byte{}, fmt.Sprintf("%s/stock/find/%s", s.urls.Stock, itemID))
 	if err != nil {
-		logrus.WithError(err).Error("unable to parse price part")
+		logrus.WithError(err).Error("unable to get item price")
+		util.InternalServerError(ctx)
+		return
+	}
+	if status != fasthttp.StatusOK {
+		logrus.WithField("status", status).Error("error while getting item price")
+		ctx.SetStatusCode(status)
+		return
+	}
+	pricePart := strings.Split(string(resp), "\"price\": ")[1]
+	price, err := strconv.Atoi(pricePart[:len(pricePart)-1])
+	if err != nil {
+		logrus.WithError(err).WithField("stock", string(resp)).Error("malformed response from stock service")
 		util.InternalServerError(ctx)
 		return
 	}
 
+	// Add the item to the order
+	items := itemStringToMap(itemsPart)
+	items[itemID] = price
+	itemString := mapToItemString(items)
+	jsonSplit[3] = fmt.Sprintf("%s}", itemString)
 
 
+	//update the price of the order
+	costPart := jsonSplit[4]
+	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
+	if err != nil {
+		logrus.WithError(err).Error("cannot parse order cost")
+		util.InternalServerError(ctx)
+		return
+	}
 
+	jsonSplit[4] = fmt.Sprintf("%d}", (cost + price))
+	updatedJson := strings.Join(jsonSplit, ": ")
+	set := s.store.Set(ctx, orderID, updatedJson,0)
+	if set.Err() != nil {
+		logrus.WithError(set.Err()).Error("unable to update order item")
+		util.InternalServerError(ctx)
+		return
+	}
 
-	// Add the item to the order and update total costs
+	util.Ok(ctx)
 
-	//
 }
 
 func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, itemID string){
