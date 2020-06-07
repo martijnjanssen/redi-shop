@@ -64,8 +64,6 @@ func (s *redisOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string){
 	}
 
 	util.JSONResponse(ctx, fasthttp.StatusOK, get.Val())
-
-
 }
 
 func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, itemID string){
