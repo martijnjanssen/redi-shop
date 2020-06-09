@@ -16,7 +16,7 @@ type redisOrderStore struct {
 	urls *util.Services
 }
 
-func newOrderStore(c *redis.Client) *redisOrderStore {
+func newRedisOrderStore(c *redis.Client) *redisOrderStore {
 	return &redisOrderStore{
 		store: c,
 	}
@@ -24,7 +24,7 @@ func newOrderStore(c *redis.Client) *redisOrderStore {
 
 func (s *redisOrderStore) Create(ctx *fasthttp.RequestCtx, userID string){
 	orderID :=  uuid.Must(uuid.NewV4()).String()
-	json := fmt.Sprintf("{\"user_id\": \"%s\", \"items\": \"[]\"}", userID)
+	json := fmt.Sprintf("{\"user_id\": \"%s\", \"paid\": false, \"items\": \"[]\", \"cost\": 0}", userID)
 
 	set := s.store.SetNX(ctx, orderID, json, 0)
 	if set.Err() != nil {
@@ -81,11 +81,6 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 	}
 
 
-	// Get the values of the order
-	json := getOrder.Val()
-	jsonSplit := strings.Split(json, ":")
-	itemsPart := jsonSplit[3]
-
 	// Get price of the item
 	c := fasthttp.Client{}
 	status, resp, err := c.Get([]byte{}, fmt.Sprintf("%s/stock/find/%s", s.urls.Stock, itemID))
@@ -99,6 +94,7 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 		ctx.SetStatusCode(status)
 		return
 	}
+
 	pricePart := strings.Split(string(resp), "\"price\": ")[1]
 	price, err := strconv.Atoi(pricePart[:len(pricePart)-1])
 	if err != nil {
@@ -107,22 +103,27 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 		return
 	}
 
+	// Get the values of the order
+	json := getOrder.Val()
+	jsonSplit := strings.Split(json, ":")
+	itemsPart := jsonSplit[2]
+
 	// Add the item to the order
 	items := itemStringToMap(itemsPart)
 	items[itemID] = price
 	itemString := mapToItemString(items)
-	jsonSplit[3] = fmt.Sprintf("%s}", itemString)
+	jsonSplit[2] = fmt.Sprintf("%s}", itemString)
 
 
 	//update the price of the order
-	costPart := jsonSplit[4]
+	costPart := jsonSplit[3]
 	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
 	if err != nil {
 		logrus.WithError(err).Error("cannot parse order cost")
 		util.InternalServerError(ctx)
 		return
 	}
-	jsonSplit[4] = fmt.Sprintf("%d}", (cost + price))
+	jsonSplit[3] = fmt.Sprintf("%d}", (cost + price))
 
 	// Update the json object
 	updatedJson := strings.Join(jsonSplit, ": ")
@@ -150,12 +151,6 @@ func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, i
 		return
 	}
 
-
-	// Get the values of the order
-	json := getOrder.Val()
-	jsonSplit := strings.Split(json, ":")
-	itemsPart := jsonSplit[3]
-
 	// Get price of the item
 	c := fasthttp.Client{}
 	status, resp, err := c.Get([]byte{}, fmt.Sprintf("%s/stock/find/%s", s.urls.Stock, itemID))
@@ -177,23 +172,28 @@ func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, i
 		return
 	}
 
+	// Get the values of the order
+	json := getOrder.Val()
+	jsonSplit := strings.Split(json, ":")
+	itemsPart := jsonSplit[2]
+
 	// Convert string to map so we can update the map first
 	items := itemStringToMap(itemsPart)
 
 	// Update costs before you delete the item
-	costPart := jsonSplit[4]
+	costPart := jsonSplit[3]
 	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
 	if err != nil {
 		logrus.WithError(err).Error("cannot parse order cost")
 		util.InternalServerError(ctx)
 		return
 	}
-	jsonSplit[4] = fmt.Sprintf("%d}", (cost - price))
+	jsonSplit[3] = fmt.Sprintf("%d}", (cost - price))
 
 	// Now delete the item from the list
 	delete(items, itemID)
 	itemString := mapToItemString(items)
-	jsonSplit[3] = fmt.Sprintf("%s}", itemString)
+	jsonSplit[2] = fmt.Sprintf("%s}", itemString)
 
 	// Update the json object
 	updatedJson := strings.Join(jsonSplit, ": ")
@@ -226,10 +226,10 @@ func (s* redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string){
 
 
 	// Check if order is not paid (if it is, return)
-	userIDPart := jsonSplit[1]
-	paidPart := jsonSplit[2]
-	itemsPart := jsonSplit[3]
-	costPart := jsonSplit[4]
+	userIDPart := jsonSplit[0]
+	paidPart := jsonSplit[1]
+	itemsPart := jsonSplit[2]
+	costPart := jsonSplit[3]
 
 	// Parse the cost
 	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
@@ -240,8 +240,7 @@ func (s* redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string){
 	}
 
 	// Parse the paid boolean (Question: what if paid? For now simply return)
-	b, err := strconv.ParseBool(paidPart)
-	if b == true {
+	if paidPart == "true" {
 		return
 	}
 	if err != nil {
@@ -265,11 +264,11 @@ func (s* redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string){
 	}
 
 	// Update this order as paid
-	b = true
-	jsonSplit[2] = fmt.Sprintf("%s}", strconv.FormatBool(b))
+	paidPart = "true"
+	jsonSplit[2] = fmt.Sprintf("%s}", paidPart)
 
 
-	// Subtract stock for each item in the order (Question: what to with items in the order object?)
+	// Subtract stock for each item in the order
 	items := itemStringToMap(itemsPart)
 	for k := range items {
 		status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/stock/subtract/%s/1", s.urls.Stock, k), nil)
