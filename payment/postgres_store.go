@@ -33,7 +33,7 @@ func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orde
 	exists := false
 	payment := &Payment{}
 	err := tx.Model(&Payment{}).
-		Where("order_id = ?", userID).
+		Where("order_id = ?", orderID).
 		First(payment).
 		Error
 	if err == gorm.ErrRecordNotFound {
