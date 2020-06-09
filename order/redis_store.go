@@ -174,29 +174,31 @@ func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, i
 
 	// Get the values of the order
 	json := getOrder.Val()
-	jsonSplit := strings.Split(json, ":")
-	itemsPart := jsonSplit[2]
+	itemsPart := strings.Split(strings.Split(json, "\"items\": ")[1], ",")[0]
+
 
 	// Convert string to map so we can update the map first
 	items := itemStringToMap(itemsPart)
 
 	// Update costs before you delete the item
-	costPart := jsonSplit[3]
+	costPart := strings.Split(strings.Split(json, "\"cost\": ")[1], "}")[0]
 	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
 	if err != nil {
 		logrus.WithError(err).Error("cannot parse order cost")
 		util.InternalServerError(ctx)
 		return
 	}
-	jsonSplit[3] = fmt.Sprintf("%d}", (cost - price))
 
 	// Now delete the item from the list
 	delete(items, itemID)
 	itemString := mapToItemString(items)
-	jsonSplit[2] = fmt.Sprintf("%s}", itemString)
+
+	//update last part (item list and total cost)
+	updateJsonPart := strings.Split(json, "\"items\": ")
+	updateJsonPart[1] = fmt.Sprintf("\"items\": %s, \"cost\": %d}", itemString, cost-price)
 
 	// Update the json object
-	updatedJson := strings.Join(jsonSplit, ": ")
+	updatedJson := strings.Join(updateJsonPart, ": ")
 	set := s.store.Set(ctx, orderID, updatedJson,0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update order item")
