@@ -224,16 +224,15 @@ func (s* redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string){
 	}
 	// Get the values of the order
 	json := getOrder.Val()
-	jsonSplit := strings.Split(json, ":")
 
-
-	// Check if order is not paid (if it is, return)
-	userIDPart := jsonSplit[0]
-	paidPart := jsonSplit[1]
-	itemsPart := jsonSplit[2]
-	costPart := jsonSplit[3]
+	// Parse the paid value (If paid, then simply return)
+	paidPart := strings.Split(strings.Split(strings.Split(json, "\"items\": ")[0], "\"paid\": ")[1], ",")[0]
+	if paidPart == "true" {
+		return
+	}
 
 	// Parse the cost
+	costPart := strings.Split(strings.Split(json, "\"cost\": ")[1], "}")[0]
 	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
 	if err != nil {
 		logrus.WithError(err).Error("cannot parse order cost")
@@ -241,15 +240,8 @@ func (s* redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string){
 		return
 	}
 
-	// Parse the paid boolean (Question: what if paid? For now simply return)
-	if paidPart == "true" {
-		return
-	}
-	if err != nil {
-		logrus.WithError(err).Error("cannot parse paid boolean")
-		util.InternalServerError(ctx)
-		return
-	}
+
+	userIDPart := strings.Split(strings.Split(strings.Split(json, "\"paid\": ")[0], ": ")[1], ",")[0]
 
 	// Make the payment by calling payment service
 	c := fasthttp.Client{}
@@ -265,10 +257,10 @@ func (s* redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string){
 		return
 	}
 
-	// Update this order as paid
-	paidPart = "true"
-	jsonSplit[2] = fmt.Sprintf("%s}", paidPart)
-
+	// Update part of json object that is changed (set paid to true)
+	itemsPart := strings.Split(strings.Split(json, "\"items\": ")[1], ",")[0]
+	updateJsonPart := strings.Split(json, "\"paid\": ")
+	updateJsonPart[1] = fmt.Sprintf("\"paid\": %t, \"items\": %s, \"cost\": %d}", true, itemsPart, cost)
 
 	// Subtract stock for each item in the order
 	items := itemStringToMap(itemsPart)
@@ -287,7 +279,7 @@ func (s* redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string){
 	}
 
 	// Commit changes to json order object
-	updatedJson := strings.Join(jsonSplit, ": ")
+	updatedJson := strings.Join(updateJsonPart, "")
 	set := s.store.Set(ctx, orderID, updatedJson,0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update order item")
