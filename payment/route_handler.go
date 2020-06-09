@@ -24,7 +24,7 @@ func NewRouteHandler(conn *util.Connection) *paymentRouteHandler {
 	case util.POSTGRES:
 		store = newPostgresPaymentStore(conn.Postgres, &conn.URL)
 	case util.REDIS:
-		panic("NOT IMPLEMENTED")
+		store = newRedisPaymentStore(conn.Redis)
 	}
 
 	return &paymentRouteHandler{
