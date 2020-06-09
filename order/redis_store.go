@@ -80,7 +80,6 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 		return
 	}
 
-
 	// Get price of the item
 	c := fasthttp.Client{}
 	status, resp, err := c.Get([]byte{}, fmt.Sprintf("%s/stock/find/%s", s.urls.Stock, itemID))
@@ -105,28 +104,29 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 
 	// Get the values of the order
 	json := getOrder.Val()
-	jsonSplit := strings.Split(json, ":")
-	itemsPart := jsonSplit[2]
+	itemsPart := strings.Split(strings.Split(json, "\"items\": ")[1], ",")[0]
 
 	// Add the item to the order
 	items := itemStringToMap(itemsPart)
 	items[itemID] = price
 	itemString := mapToItemString(items)
-	jsonSplit[2] = fmt.Sprintf("%s}", itemString)
-
 
 	//update the price of the order
-	costPart := jsonSplit[3]
+	costPart := strings.Split(strings.Split(json, "\"cost\": ")[1], "}")[0]
 	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
 	if err != nil {
 		logrus.WithError(err).Error("cannot parse order cost")
 		util.InternalServerError(ctx)
 		return
 	}
-	jsonSplit[3] = fmt.Sprintf("%d}", (cost + price))
+
+	//update last part (item list and total cost)
+	updateJsonPart := strings.Split(json, "\"items\": ")
+	updateJsonPart[1] = fmt.Sprintf("\"items\": %s, \"cost\": %d}", itemString, cost+price)
+
 
 	// Update the json object
-	updatedJson := strings.Join(jsonSplit, ": ")
+	updatedJson := strings.Join(updateJsonPart, "")
 	set := s.store.Set(ctx, orderID, updatedJson,0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update order item")
