@@ -38,6 +38,13 @@ func (s *redisUserStore) Create(ctx *fasthttp.RequestCtx) {
 	}
 
 	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"user_id\": \"%s\"}", userID))
+
+	//Publish a message to channel "user_stock_channel" upon creation of user
+	errPub := s.store.Publish(ctx, "user_stock_channel", "Message from user service to stock service").Err()
+	if errPub != nil {
+		logrus.WithError(errPub).Error("Publishing of message failed")
+	}
+
 }
 
 func (s *redisUserStore) Remove(ctx *fasthttp.RequestCtx, userID string) {
