@@ -1,12 +1,14 @@
 package order
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/util"
+	errwrap "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 )
@@ -90,123 +92,108 @@ func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 }
 
 func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, itemID string) {
-	tx := util.StartTX(s.db)
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Get the order from the database
+		order := &Order{}
+		err := tx.Model(&Order{}).
+			Where("id = ?", orderID).
+			First(order).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			util.NotFound(ctx)
+			return errors.New("order not found")
+		} else if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to get order")
+		}
 
-	// Get the order from the database
-	order := &Order{}
-	err := tx.Model(&Order{}).
-		Where("id = ?", orderID).
-		First(order).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		util.Rollback(tx)
-		return
-	} else if err != nil {
-		logrus.WithError(err).Error("unable to get order to add item")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	}
+		// Get the price of the item
+		c := fasthttp.Client{}
+		status, resp, err := c.Get([]byte{}, fmt.Sprintf("%s/stock/find/%s", s.urls.Stock, itemID))
+		if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to get item price")
+		} else if status != fasthttp.StatusOK {
+			ctx.SetStatusCode(status)
+			return errors.New("error while getting item price")
+		}
+		pricePart := strings.Split(string(resp), "\"price\": ")[1]
+		price, err := strconv.Atoi(pricePart[:len(pricePart)-1])
+		if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "malformed response from stock service")
+		}
 
-	// Get the price of the item
-	c := fasthttp.Client{}
-	status, resp, err := c.Get([]byte{}, fmt.Sprintf("%s/stock/find/%s", s.urls.Stock, itemID))
+		// Add the item to the order and update the price of the order
+		items := itemStringToMap(order.Items)
+		items[itemID] = price
+		itemsString := mapToItemString(items)
+		cost := order.Cost + price
+
+		// Save the updated order in the database
+		err = tx.Model(&Order{}).
+			Where("id = ?", orderID).
+			Update("items", itemsString).
+			Update("cost", cost).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			util.NotFound(ctx)
+			return errwrap.Wrap(err, "unable to find order")
+		} else if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to update order")
+		}
+
+		return nil
+	})
 	if err != nil {
-		logrus.WithError(err).Error("unable to get item price")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	} else if status != fasthttp.StatusOK {
-		logrus.WithField("status", status).Error("error while getting item price")
-		ctx.SetStatusCode(status)
-		util.Rollback(tx)
-		return
-	}
-	pricePart := strings.Split(string(resp), "\"price\": ")[1]
-	price, err := strconv.Atoi(pricePart[:len(pricePart)-1])
-	if err != nil {
-		logrus.WithError(err).WithField("stock", string(resp)).Error("malformed response from stock service")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	}
-
-	// Add the item to the order and update the price of the order
-	items := itemStringToMap(order.Items)
-	items[itemID] = price
-	itemsString := mapToItemString(items)
-	cost := order.Cost + price
-
-	// Save the updated order in the database
-	err = tx.Model(&Order{}).
-		Where("id = ?", orderID).
-		Update("items", itemsString).
-		Update("cost", cost).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		util.Rollback(tx)
-		return
-	} else if err != nil {
-		logrus.WithError(err).Error("unable to save updated order")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	}
-
-	if !util.Commit(tx) {
-		util.InternalServerError(ctx)
+		logrus.WithError(err).Error("unable to add item to order")
 		return
 	}
 	util.Ok(ctx)
 }
 
 func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, itemID string) {
-	tx := util.StartTX(s.db)
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		order := &Order{}
+		err := tx.Model(&Order{}).
+			Where("id = ?", orderID).
+			First(order).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			util.NotFound(ctx)
+			return errors.New("order not found")
+		} else if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to get order from database")
+		}
 
-	order := &Order{}
-	err := tx.Model(&Order{}).
-		Where("id = ?", orderID).
-		First(order).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		util.Rollback(tx)
-		return
-	} else if err != nil {
-		logrus.WithError(err).Error("unable to get order from database")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
+		// Remove the item from the order and update the price of the order
+		items := itemStringToMap(order.Items)
+		cost := order.Cost - items[itemID]
+		delete(items, itemID)
+		itemsString := mapToItemString(items)
+
+		err = tx.Model(&Order{}).
+			Where("id = ?", orderID).
+			Update("items", itemsString).
+			Update("cost", cost).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			util.NotFound(ctx)
+			return errors.New("order not found")
+		} else if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to update order")
+		}
+
+		return nil
+	})
+	if err != nil {
+		logrus.WithError(err).Error("unable to remove item from order")
 		return
 	}
 
-	// Remove the item from the order and update the price of the order
-	items := itemStringToMap(order.Items)
-	cost := order.Cost - items[itemID]
-	delete(items, itemID)
-	itemsString := mapToItemString(items)
-
-	err = tx.Model(&Order{}).
-		Where("id = ?", orderID).
-		Update("items", itemsString).
-		Update("cost", cost).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		util.Rollback(tx)
-		return
-	} else if err != nil {
-		logrus.WithError(err).Error("unable to update order to remove items")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	}
-
-	if !util.Commit(tx) {
-		util.InternalServerError(ctx)
-		return
-	}
 	util.Ok(ctx)
 }
 
