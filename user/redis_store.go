@@ -67,8 +67,11 @@ func (s *redisUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
 
 func (s *redisUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
 	get := s.store.Get(ctx, userID)
-	if get.Err() != nil {
-		logrus.WithError(get.Err()).Error("unable to get credit")
+	if get.Err() == redis.Nil {
+		util.NotFound(ctx)
+		return
+	} else if get.Err() != nil {
+		logrus.WithError(get.Err()).Error("unable to get credit to subtract")
 		util.InternalServerError(ctx)
 		return
 	}

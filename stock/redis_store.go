@@ -57,8 +57,7 @@ func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, ID string, amo
 
 	json := get.Val()
 	jsonSplit := strings.Split(json, ": ")
-	stockString := jsonSplit[2]
-	stock, err := strconv.Atoi(stockString[0 : len(stockString)-1])
+	stock, err := strconv.Atoi(jsonSplit[2][0 : len(jsonSplit[2])-1])
 	if err != nil {
 		logrus.WithError(err).Error("cannot parse stock amount")
 		util.InternalServerError(ctx)

@@ -112,8 +112,8 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 		return
 	}
 
-	pricePart := strings.Split(string(resp), "\"price\": ")[1]
-	price, err := strconv.Atoi(pricePart[:len(pricePart)-1])
+	pricePart := strings.Split(strings.Split(string(resp), "\"price\": ")[1], ",")[0]
+	price, err := strconv.Atoi(pricePart)
 	if err != nil {
 		logrus.WithError(err).WithField("stock", string(resp)).Error("malformed response from stock service")
 		util.InternalServerError(ctx)
@@ -130,10 +130,10 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 	itemsString := mapToItemString(items)
 
 	//update the price of the order
-	costPart := strings.Split(strings.Split(jsonSplit[1], "\"cost\": ")[1], "}")[0]
+	costPart := strings.Split(jsonSplit[1], "\"cost\": ")[1]
 	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
 	if err != nil {
-		logrus.WithError(err).Error("cannot parse order cost")
+		logrus.WithField("cost", costPart).WithError(err).Error("cannot parse order cost")
 		util.InternalServerError(ctx)
 		return
 	}
@@ -150,7 +150,6 @@ func (s *redisOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, item
 	}
 
 	util.Ok(ctx)
-
 }
 
 func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, itemID string) {
@@ -169,10 +168,10 @@ func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, i
 	jsonSplit := strings.Split(json, "\"items\": ")
 
 	// Get price of the order
-	costPart := strings.Split(strings.Split(jsonSplit[1], "\"cost\": ")[1], "}")[0]
+	costPart := strings.Split(jsonSplit[1], "\"cost\": ")[1]
 	cost, err := strconv.Atoi(costPart[0 : len(costPart)-1])
 	if err != nil {
-		logrus.WithError(err).Error("cannot parse order cost")
+		logrus.WithField("cost", costPart).WithError(err).Error("cannot parse order cost")
 		util.InternalServerError(ctx)
 		return
 	}
@@ -210,8 +209,8 @@ func (s *redisOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) {
 
 	// Get the values of the order
 	jsonSplit := strings.Split(getOrder.Val(), ": ")
-	userID := strings.Split(jsonSplit[1], ",")[0]
-	itemsArray := strings.Split(jsonSplit[2], ",")[0]
+	userID := strings.Split(jsonSplit[1][1:], "\",")[0]
+	itemsArray := strings.Split(jsonSplit[2], ", \"")[0]
 	cost := strings.Split(jsonSplit[3], "}")[0]
 
 	// Make the payment by calling payment service
