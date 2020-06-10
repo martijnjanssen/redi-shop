@@ -72,13 +72,9 @@ func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 		return
 	}
 
-	items := itemStringToMap(order.Items)
-	itemString := ""
-	for k := range items {
-		itemString = fmt.Sprintf("%s\"%s\",", itemString, k)
-	}
+	itemsString := itemStringToJSONString(order.Items)
 
-	response := fmt.Sprintf("{\"order_id\": \"%s\", \"paid\": %t, \"items\": [%s], \"user_id\": \"%s\", \"total_cost\": %d}", order.ID, order.Paid, itemString[:len(itemString)-1], order.UserID, order.Cost)
+	response := fmt.Sprintf("{\"order_id\": \"%s\", \"paid\": %t, \"items\": [%s], \"user_id\": \"%s\", \"total_cost\": %d}", order.ID, order.Paid, itemsString, order.UserID, order.Cost)
 	util.JSONResponse(ctx, fasthttp.StatusOK, response)
 }
 
@@ -204,7 +200,6 @@ func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string
 	util.Ok(ctx)
 }
 
-// NOTE: function is highly experimental, has to be changed/tweaked to handle transactions and other services better
 func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) {
 	tx := util.StartTX(s.db)
 	order := &Order{}
@@ -278,38 +273,4 @@ func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) 
 		return
 	}
 	util.Ok(ctx)
-}
-
-func itemStringToMap(itemString string) map[string]int {
-	m := map[string]int{}
-
-	if itemString == "[]" {
-		return m
-	}
-
-	items := strings.Split(itemString[1:len(itemString)-1], ",")
-	for i := range items {
-		item := strings.Split(items[i], "->")
-		val, err := strconv.Atoi(item[1])
-		if err != nil {
-			panic(fmt.Sprintf("invalid string representation of item, %s", items[i]))
-		}
-		m[item[0]] = val
-	}
-
-	return m
-}
-
-func mapToItemString(items map[string]int) string {
-	s := ""
-
-	for k, v := range items {
-		s = fmt.Sprintf("%s%s->%d,", s, k, v)
-	}
-
-	if s == "" {
-		return "[]"
-	}
-
-	return fmt.Sprintf("[%s]", s[:len(s)-1])
 }
