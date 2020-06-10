@@ -17,9 +17,10 @@ type redisOrderStore struct {
 	urls  *util.Services
 }
 
-func newRedisOrderStore(c *redis.Client) *redisOrderStore {
+func newRedisOrderStore(c *redis.Client, urls *util.Services) *redisOrderStore {
 	return &redisOrderStore{
 		store: c,
+		urls:  urls,
 	}
 }
 

@@ -25,7 +25,7 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 	case util.POSTGRES:
 		store = newPostgresOrderStore(conn.Postgres, &conn.URL)
 	case util.REDIS:
-		store = newRedisOrderStore(conn.Redis)
+		store = newRedisOrderStore(conn.Redis, &conn.URL)
 	}
 
 	return &orderRouteHandler{
