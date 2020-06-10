@@ -198,7 +198,7 @@ func (s *redisOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string, i
 	updateJsonPart[1] = fmt.Sprintf("\"items\": %s, \"cost\": %d}", itemString, cost-price)
 
 	// Update the json object
-	updatedJson := strings.Join(updateJsonPart, ": ")
+	updatedJson := strings.Join(updateJsonPart, "")
 	set := s.store.Set(ctx, orderID, updatedJson,0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update order item")
