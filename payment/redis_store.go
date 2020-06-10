@@ -24,6 +24,22 @@ func newRedisPaymentStore(c *redis.Client, urls *util.Services) *redisPaymentSto
 }
 
 func (s *redisPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orderID string, amount int) {
+	exists := true
+	get := s.store.Get(ctx, orderID)
+	if get.Err() == redis.Nil {
+		exists = false
+	} else if get.Err() != nil {
+		logrus.WithError(get.Err()).Error("unable to retrieve payment")
+		util.InternalServerError(ctx)
+		return
+	}
+
+	if exists && strings.Contains(get.Val(), "paid") {
+		logrus.Info("order was already paid")
+		util.BadRequest(ctx)
+		return
+	}
+
 	//Call the user service to subtract the order amount from the users' credit
 	c := fasthttp.Client{}
 	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/subtract/%s/%d", s.urls.User, userID, amount), nil)

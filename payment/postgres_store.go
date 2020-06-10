@@ -31,7 +31,7 @@ func newPostgresPaymentStore(db *gorm.DB, urls *util.Services) *postgresPaymentS
 
 func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orderID string, amount int) {
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		exists := false
+		exists := true
 		payment := &Payment{}
 		err := tx.Model(&Payment{}).
 			Where("order_id = ?", orderID).
@@ -58,7 +58,7 @@ func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orde
 			return errwrap.Wrap(err, "unable to subtract credit")
 		} else if status != fasthttp.StatusOK {
 			ctx.SetStatusCode(status)
-			return errwrap.Wrap(err, "error while subtracting credit")
+			return errors.New("error while subtracting credit")
 		}
 
 		payment = &Payment{OrderID: orderID, Amount: amount, Status: "paid"}
@@ -114,10 +114,8 @@ func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, o
 		if err != nil {
 			util.InternalServerError(ctx)
 			return errwrap.Wrap(err, "unable to refund user credit")
-		}
-		if status != fasthttp.StatusOK {
+		} else if status != fasthttp.StatusOK {
 			ctx.SetStatusCode(status)
-			util.Rollback(tx)
 			return errors.New("error refunding user credit")
 		}
 
