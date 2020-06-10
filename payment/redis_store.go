@@ -3,6 +3,7 @@ package payment
 import (
 	"fmt"
 	"strings"
+
 	"github.com/go-redis/redis/v8"
 	"github.com/martijnjanssen/redi-shop/util"
 	"github.com/sirupsen/logrus"
@@ -11,21 +12,19 @@ import (
 
 type redisPaymentStore struct {
 	store *redis.Client
-	urls *util.Services
+	urls  *util.Services
 }
 
 func newRedisPaymentStore(c *redis.Client, urls *util.Services) *redisPaymentStore {
 	// AutoMigrate structs to create or update database tables
 	return &redisPaymentStore{
 		store: c,
-		urls: urls,
+		urls:  urls,
 	}
 }
 
 func (s *redisPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orderID string, amount int) {
-
 	//Call the user service to subtract the order amount from the users' credit
-
 	c := fasthttp.Client{}
 	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/subtract/%s/%d", s.urls.User, userID, amount), nil)
 	if err != nil {
@@ -36,14 +35,12 @@ func (s *redisPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orderID
 		logrus.WithField("status", status).Error("error while subtracting credit")
 		ctx.SetStatusCode(status)
 		return
-	} 
-	
-	json := fmt.Sprintf("{\"amount\": %d, \"status\": \"paid\"}", amount)
+	}
 
 	//Set payment status to paid. SETNX command will set key to hold a string value if key does not exist. If key already exists, no operation is performed.
-	set := s.store.SetNX(ctx, orderID, json, 0)
+	set := s.store.SetNX(ctx, orderID, fmt.Sprintf("{\"amount\": %d, \"status\": \"paid\"}", amount), 0)
 	if set.Err() != nil {
-		logrus.WithError(set.Err()).Error("payment unsuccessful")
+		logrus.WithError(set.Err()).Error("unable to persist payment")
 		util.InternalServerError(ctx)
 		return
 	}
@@ -62,26 +59,26 @@ func (s *redisPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, orde
 		return
 	}
 
-	json := get.Val() //get the amount and status in this format --> {amount: int, status: "string"}
-	jsonSplit := strings.Split(json, ": ") //split the json above on the ":". so now jsonSplit is an array of 3 elements - "{amount" "int,status" "string}"
+	// get the amount and status in this format --> {"amount": int, "status": "string"}
+	json := get.Val()
 
-	//code for retrieving only the status of the payment from the json (used to check if the payment has already been cancelled)
+	// code for retrieving only the status of the payment from the json (used to check if the payment has already been cancelled)
+	// Retrieve the string between "\"status\": \"" and "\"}"
+	payment_status := strings.Split(strings.Split(json, "\"status\": \"")[1], "\"}")[0]
 
-	payment_status := jsonSplit[2][0 : len(jsonSplit[2])-1] //this will access the 3rd element of the jsonSplit string which is "string }" ["}" not needed]
+	// code for retrieving only the amount of the payment from the json (used to refund credit to the user)
+	// Retrieve the string between "\"amount\": " and ","
+	amount := strings.Split(strings.Split(json, "\"amount\": ")[1], ",")[0]
 
-	//code for retrieving only the amount of the payment from the json (used to refund credit to the user)
-	
-	amount := jsonSplit[1][0 : len(jsonSplit[1])-2] //this will access the 2nd element of the jsonSplit string which is "int, status" [we only need the int] 
-
-	if payment_status == "\"cancelled\"" {
+	if payment_status == "cancelled" {
 		logrus.Info("payment is already cancelled")
 		util.BadRequest(ctx)
 		return
 	}
-	
+
 	// Refund the credit to the user
 	c := fasthttp.Client{}
-	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/add/%s/%d", s.urls.User, userID, amount), nil)
+	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/add/%s/%s", s.urls.User, userID, amount), nil)
 	if err != nil {
 		logrus.WithError(err).Error("unable to refund credit to user")
 		util.InternalServerError(ctx)
@@ -93,7 +90,7 @@ func (s *redisPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, orde
 	}
 
 	// Update the status of the payment to cancelled
-	set := s.store.Set(ctx, orderID, payment_status, 0)
+	set := s.store.Set(ctx, orderID, fmt.Sprintf("{\"amount\": %s, \"status\": \"cancelled\"}", amount), 0)
 	if set.Err() != nil {
 		logrus.WithError(set.Err()).Error("unable to update payment status")
 		util.InternalServerError(ctx)
@@ -113,5 +110,10 @@ func (s *redisPaymentStore) PaymentStatus(ctx *fasthttp.RequestCtx, orderID stri
 		return
 	}
 
-	util.JSONResponse(ctx, fasthttp.StatusOK, get.Val())
+	paid := "false"
+	if strings.Contains(get.Val(), "paid") {
+		paid = "true"
+	}
+
+	util.JSONResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("{\"paid\": %s}", paid))
 }
