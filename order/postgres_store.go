@@ -72,9 +72,20 @@ func (s *postgresOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 		return
 	}
 
-	itemsString := itemStringToJSONString(order.Items)
+	c := fasthttp.Client{}
+	status, statusResp, err := c.Post([]byte{}, fmt.Sprintf("%s/payment/status/%s/", s.urls.Payment, orderID), nil)
+	if err != nil {
+		logrus.WithError(err).Error("unable to get payment status")
+		util.InternalServerError(ctx)
+		return
+	} else if status != fasthttp.StatusOK {
+		logrus.WithField("status", status).Error("error while getting payment status")
+		ctx.SetStatusCode(status)
+		return
+	}
 
-	response := fmt.Sprintf("{\"order_id\": \"%s\", \"paid\": %t, \"items\": [%s], \"user_id\": \"%s\", \"total_cost\": %d}", order.ID, order.Paid, itemsString, order.UserID, order.Cost)
+	itemsString := itemStringToJSONString(order.Items)
+	response := fmt.Sprintf("{\"order_id\": \"%s\", \"paid\": %t, \"items\": [%s], \"user_id\": \"%s\", \"total_cost\": %d}", order.ID, strings.Contains(string(statusResp), "true"), itemsString, order.UserID, order.Cost)
 	util.JSONResponse(ctx, fasthttp.StatusOK, response)
 }
 
@@ -106,8 +117,7 @@ func (s *postgresOrderStore) AddItem(ctx *fasthttp.RequestCtx, orderID string, i
 		util.InternalServerError(ctx)
 		util.Rollback(tx)
 		return
-	}
-	if status != fasthttp.StatusOK {
+	} else if status != fasthttp.StatusOK {
 		logrus.WithField("status", status).Error("error while getting item price")
 		ctx.SetStatusCode(status)
 		util.Rollback(tx)
@@ -201,52 +211,30 @@ func (s *postgresOrderStore) RemoveItem(ctx *fasthttp.RequestCtx, orderID string
 }
 
 func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) {
-	tx := util.StartTX(s.db)
 	order := &Order{}
-	err := tx.Model(&Order{}).
-		Where("id = ? AND NOT paid", orderID).
+	err := s.db.Model(&Order{}).
+		Where("id = ?", orderID).
 		First(order).
 		Error
 	if err == gorm.ErrRecordNotFound {
 		util.NotFound(ctx)
-		util.Rollback(tx)
 		return
 	} else if err != nil {
 		logrus.WithError(err).Error("unable to find order for checkout")
 		util.InternalServerError(ctx)
-		util.Rollback(tx)
 		return
 	}
 
-	c := fasthttp.Client{}
 	// Make the payment
+	c := fasthttp.Client{}
 	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/payment/pay/%s/%s/%d", s.urls.Payment, order.UserID, orderID, order.Cost), nil)
 	if err != nil {
 		logrus.WithError(err).Error("unable to pay for the order")
 		util.InternalServerError(ctx)
-		util.Rollback(tx)
 		return
-	}
-	if status != fasthttp.StatusOK {
+	} else if status != fasthttp.StatusOK {
 		logrus.WithField("status", status).Error("error while paying for the order")
 		ctx.SetStatusCode(status)
-		util.Rollback(tx)
-		return
-	}
-
-	// Set the order as paid in the database
-	err = tx.Model(&Order{}).
-		Where("id = ? AND NOT paid", orderID).
-		Update("paid", true).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		util.Rollback(tx)
-		return
-	} else if err != nil {
-		logrus.WithError(err).Error("unable to persist paid order in database")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
 		return
 	}
 
@@ -257,20 +245,14 @@ func (s *postgresOrderStore) Checkout(ctx *fasthttp.RequestCtx, orderID string) 
 		if err != nil {
 			logrus.WithError(err).Error("unable to subtract stock")
 			util.InternalServerError(ctx)
-			util.Rollback(tx)
 			return
 		}
 		if status != fasthttp.StatusOK {
 			logrus.WithField("status", status).Error("error while subtracting stock")
 			ctx.SetStatusCode(status)
-			util.Rollback(tx)
 			return
 		}
 	}
 
-	if !util.Commit(tx) {
-		util.InternalServerError(ctx)
-		return
-	}
 	util.Ok(ctx)
 }
