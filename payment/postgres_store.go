@@ -1,10 +1,12 @@
 package payment
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/util"
+	errwrap "github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 )
@@ -28,132 +30,114 @@ func newPostgresPaymentStore(db *gorm.DB, urls *util.Services) *postgresPaymentS
 }
 
 func (s *postgresPaymentStore) Pay(ctx *fasthttp.RequestCtx, userID string, orderID string, amount int) {
-	tx := util.StartTX(s.db)
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		exists := false
+		payment := &Payment{}
+		err := tx.Model(&Payment{}).
+			Where("order_id = ?", orderID).
+			First(payment).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			// Do nothing, record has to be created
+			exists = false
+		} else if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to retrieve payment status")
+		}
 
-	exists := false
-	payment := &Payment{}
-	err := tx.Model(&Payment{}).
-		Where("order_id = ?", orderID).
-		First(payment).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		// Do nothing, record has to be created
-		exists = false
-	} else if err != nil {
-		logrus.WithError(err).Error("unable to retrieve payment status")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	}
+		// If record is found, check that it is not already paid
+		if exists && payment.Status == "paid" {
+			util.BadRequest(ctx)
+			return errors.New("order was already paid")
+		}
 
-	// If record is found, check that it is not already paid
-	if exists && payment.Status == "paid" {
-		logrus.WithField("order_id", orderID).Info("order was already paid")
-		util.BadRequest(ctx)
-		util.Rollback(tx)
-		return
-	}
+		c := fasthttp.Client{}
+		status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/subtract/%s/%d", s.urls.User, userID, amount), nil)
+		if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to subtract credit")
+		} else if status != fasthttp.StatusOK {
+			ctx.SetStatusCode(status)
+			return errwrap.Wrap(err, "error while subtracting credit")
+		}
 
-	c := fasthttp.Client{}
-	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/subtract/%s/%d", s.urls.User, userID, amount), nil)
+		payment = &Payment{OrderID: orderID, Amount: amount, Status: "paid"}
+		q := s.db.Model(&Payment{})
+		// If it exists, update, otherwise, create
+		if exists {
+			q = q.
+				Where("order_id = ?", payment.OrderID).
+				Update("status", payment.Status)
+		} else {
+			q = q.Create(payment)
+		}
+		err = q.Error
+		if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to update payment status")
+		}
+
+		return nil
+	})
 	if err != nil {
-		logrus.WithError(err).Error("unable to subtract credit")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	} else if status != fasthttp.StatusOK {
-		logrus.WithField("status", status).Error("error while subtracting credit")
-		ctx.SetStatusCode(status)
-		util.Rollback(tx)
+		logrus.WithError(err).Error("unable to pay for order")
 		return
 	}
 
-	payment = &Payment{OrderID: orderID, Amount: amount, Status: "paid"}
-	q := s.db.Model(&Payment{})
-	// If it exists, update, otherwise, create
-	if exists {
-		q = q.
-			Where("order_id = ?", payment.OrderID).
-			Update("status", payment.Status)
-	} else {
-		q = q.Create(payment)
-	}
-	err = q.Error
-	if err != nil {
-		logrus.WithField("exists", exists).WithError(err).Error("unable to update payment status")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	}
-
-	if !util.Commit(tx) {
-		util.InternalServerError(ctx)
-		return
-	}
 	util.Ok(ctx)
 }
 
 func (s *postgresPaymentStore) Cancel(ctx *fasthttp.RequestCtx, userID string, orderID string) {
-	tx := util.StartTX(s.db)
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Retrieve the payment which needs to be cancelled
+		payment := &Payment{}
+		err := tx.Model(&Payment{}).
+			Where("order_id = ?", orderID).
+			First(payment).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			util.NotFound(ctx)
+			return errwrap.Wrap(err, "payment to cancel not found")
+		} else if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to retrieve payment to cancel")
+		}
 
-	// Retrieve the payment which needs to be cancelled
-	payment := &Payment{}
-	err := tx.Model(&Payment{}).
-		Where("order_id = ?", orderID).
-		First(payment).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		util.Rollback(tx)
-		return
-	} else if err != nil {
-		logrus.WithError(err).Error("unable to retrieve payment to cancel")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	}
+		if payment.Status == "cancelled" {
+			util.BadRequest(ctx)
+			return errors.New("payment already canceled")
+		}
 
-	if payment.Status == "cancelled" {
-		logrus.Info("payment was already cancelled")
-		util.BadRequest(ctx)
-		util.Rollback(tx)
-		return
-	}
+		// Refund the credit to the user
+		c := fasthttp.Client{}
+		status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/add/%s/%d", s.urls.User, userID, payment.Amount), nil)
+		if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to refund user credit")
+		}
+		if status != fasthttp.StatusOK {
+			ctx.SetStatusCode(status)
+			util.Rollback(tx)
+			return errors.New("error refunding user credit")
+		}
 
-	// Refund the credit to the user
-	c := fasthttp.Client{}
-	status, _, err := c.Post([]byte{}, fmt.Sprintf("%s/users/credit/add/%s/%d", s.urls.User, userID, payment.Amount), nil)
+		// Update the status of the payment to "cancelled"
+		err = tx.Model(&Payment{}).
+			Where("order_id = ?", orderID).
+			Update("status", "cancelled").
+			Error
+		if err == gorm.ErrRecordNotFound {
+			util.NotFound(ctx)
+			return errwrap.Wrap(err, "unable to update payment status")
+		} else if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to update payment status")
+		}
+
+		return nil
+	})
 	if err != nil {
-		logrus.WithError(err).Error("unable to refund credit to user")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	}
-	if status != fasthttp.StatusOK {
-		logrus.WithField("status", status).Error("error while refunding credit to user")
-		ctx.SetStatusCode(status)
-		util.Rollback(tx)
-		return
-	}
-
-	// Update the status of the payment to "cancelled"
-	err = tx.Model(&Payment{}).
-		Where("order_id = ?", orderID).
-		Update("status", "cancelled").
-		Error
-	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		util.Rollback(tx)
-		return
-	} else if err != nil {
-		logrus.WithError(err).Error("unable to update payment status")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	}
-
-	if !util.Commit(tx) {
-		util.InternalServerError(ctx)
+		logrus.WithError(err).Error("unable to cancel payment")
 		return
 	}
 	util.Ok(ctx)

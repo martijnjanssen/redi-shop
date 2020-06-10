@@ -10,6 +10,7 @@ require (
 	github.com/jinzhu/gorm v1.9.12
 	github.com/onsi/ginkgo v1.12.1 // indirect
 	github.com/onsi/gomega v1.10.0 // indirect
+	github.com/pkg/errors v0.8.0
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/viper v1.4.0

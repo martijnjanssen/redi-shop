@@ -1,12 +1,15 @@
 package user
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/jinzhu/gorm"
 	"github.com/martijnjanssen/redi-shop/util"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
+
+	errwrap "github.com/pkg/errors"
 )
 
 type postgresUserStore struct {
@@ -72,49 +75,44 @@ func (s *postgresUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
 }
 
 func (s *postgresUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
-	tx := util.StartTX(s.db)
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		user := &User{}
+		err := tx.Model(&User{}).
+			Where("id = ?", userID).
+			First(user).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			util.NotFound(ctx)
+			return errors.New("user not found")
+		} else if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to get user")
+		}
 
-	user := &User{}
-	err := tx.Model(&User{}).
-		Where("id = ?", userID).
-		First(user).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		util.Rollback(tx)
-		return
-	} else if err != nil {
-		logrus.WithError(err).Error("unable to find user to subtract credit")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
-		return
-	}
+		if user.Credit-amount < 0 {
+			util.BadRequest(ctx)
+			return errors.New("credit cannot go below 0")
+		}
 
-	if user.Credit-amount < 0 {
-		logrus.WithField("user_id", userID).Info("credit cannot go below 0")
-		util.BadRequest(ctx)
-		util.Rollback(tx)
-		return
-	}
+		err = tx.Model(&User{}).
+			Where("id = ?", userID).
+			Update("credit", gorm.Expr("credit - ?", amount)).
+			Error
+		if err == gorm.ErrRecordNotFound {
+			util.NotFound(ctx)
+			return errwrap.Wrap(err, "user not found")
+		} else if err != nil {
+			util.InternalServerError(ctx)
+			return errwrap.Wrap(err, "unable to update credit")
+		}
 
-	err = tx.Model(&User{}).
-		Where("id = ?", userID).
-		Update("credit", gorm.Expr("credit - ?", amount)).
-		Error
-	if err == gorm.ErrRecordNotFound {
-		util.NotFound(ctx)
-		util.Rollback(tx)
-		return
-	} else if err != nil {
+		return nil
+	})
+	if err != nil {
 		logrus.WithError(err).Error("unable to subtract credit")
-		util.InternalServerError(ctx)
-		util.Rollback(tx)
 		return
 	}
 
-	if !util.Commit(tx) {
-		util.InternalServerError(ctx)
-	}
 	util.Ok(ctx)
 }
 
