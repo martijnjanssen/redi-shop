@@ -68,6 +68,10 @@ func initConfig() {
 	viper.SetDefault("redis.port", "6379")
 	viper.SetDefault("redis.password", "redis")
 
+	viper.SetDefault("broker.url", "localhost")
+	viper.SetDefault("broker.port", "6379")
+	viper.SetDefault("broker.password", "redis")
+
 	viper.SetDefault("url.user", "localhost")
 	viper.SetDefault("url.order", "localhost")
 	viper.SetDefault("url.stock", "localhost")

@@ -23,7 +23,7 @@ type stockStore interface {
 
 type stockRouteHandler struct {
 	stockStore stockStore
-	redis      *redis.Client
+	broker     *redis.Client
 }
 
 func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
@@ -38,7 +38,7 @@ func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
 
 	h := &stockRouteHandler{
 		stockStore: store,
-		redis:      conn.Redis,
+		broker:     conn.Broker,
 	}
 
 	go h.handleEvents()
@@ -49,7 +49,7 @@ func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
 func (h *stockRouteHandler) handleEvents() {
 	ctx := context.Background()
 
-	pubsub := h.redis.Subscribe(ctx, util.CHANNEL_STOCK)
+	pubsub := h.broker.Subscribe(ctx, util.CHANNEL_STOCK)
 
 	// Wait for confirmation that subscription is created before publishing anything.
 	_, err := pubsub.Receive(ctx)
@@ -74,7 +74,7 @@ func (h *stockRouteHandler) SubtractStockItems(ctx context.Context, tracker stri
 	items := strings.Split(strings.Split(order, "\"items\": [")[1], "]")[0]
 
 	if items == "" {
-		util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_SUCCESS, "")
+		util.Pub(h.broker, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_SUCCESS, "")
 		return
 	}
 
@@ -96,17 +96,17 @@ func (h *stockRouteHandler) SubtractStockItems(ctx context.Context, tracker stri
 			}
 		}
 
-		util.Pub(h.redis, ctx, util.CHANNEL_PAYMENT, tracker, util.MESSAGE_PAY_REVERT, order)
+		util.Pub(h.broker, ctx, util.CHANNEL_PAYMENT, tracker, util.MESSAGE_PAY_REVERT, order)
 		if err == util.BAD_REQUEST {
-			util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_BADREQUEST, "")
+			util.Pub(h.broker, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_BADREQUEST, "")
 		} else {
-			util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_INTERNAL, "")
+			util.Pub(h.broker, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_INTERNAL, "")
 		}
 
 		return
 	}
 
-	util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_SUCCESS, "")
+	util.Pub(h.broker, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_SUCCESS, "")
 }
 
 // Returns success/failure, depending on the price status.

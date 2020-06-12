@@ -31,7 +31,8 @@ type Connection struct {
 	Postgres *gorm.DB
 	Redis    *redis.Client
 
-	URL Services
+	Broker *redis.Client
+	URL    Services
 }
 
 type Services struct {

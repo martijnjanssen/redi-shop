@@ -46,7 +46,6 @@ func (s *redisPaymentStore) Pay(ctx context.Context, userID string, orderID stri
 		logrus.WithError(err).Error("unable to subtract credit")
 		return util.INTERNAL_ERR
 	} else if status != fasthttp.StatusOK {
-		logrus.WithField("status", status).Error("error while subtracting credit")
 		return util.HTTPErrorToSAGAError(status)
 	}
 

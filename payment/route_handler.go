@@ -19,7 +19,7 @@ type paymentStore interface {
 
 type paymentRouteHandler struct {
 	paymentStore paymentStore
-	redis        *redis.Client
+	broker       *redis.Client
 }
 
 func NewRouteHandler(conn *util.Connection) *paymentRouteHandler {
@@ -34,7 +34,7 @@ func NewRouteHandler(conn *util.Connection) *paymentRouteHandler {
 
 	h := &paymentRouteHandler{
 		paymentStore: store,
-		redis:        conn.Redis,
+		broker:       conn.Broker,
 	}
 
 	go h.handleEvents()
@@ -45,7 +45,7 @@ func NewRouteHandler(conn *util.Connection) *paymentRouteHandler {
 func (h *paymentRouteHandler) handleEvents() {
 	ctx := context.Background()
 
-	pubsub := h.redis.Subscribe(ctx, util.CHANNEL_PAYMENT)
+	pubsub := h.broker.Subscribe(ctx, util.CHANNEL_PAYMENT)
 
 	// Wait for confirmation that subscription is created before publishing anything.
 	_, err := pubsub.Receive(ctx)
@@ -76,15 +76,15 @@ func (h *paymentRouteHandler) PayOrder(ctx context.Context, tracker string, orde
 	err := h.paymentStore.Pay(ctx, userID, orderID, amount)
 	if err != nil {
 		if err == util.INTERNAL_ERR {
-			util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_INTERNAL, "")
+			util.Pub(h.broker, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_INTERNAL, "")
 		} else {
-			util.Pub(h.redis, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_BADREQUEST, "")
+			util.Pub(h.broker, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_BADREQUEST, "")
 		}
 
 		return
 	}
 
-	util.Pub(h.redis, ctx, util.CHANNEL_STOCK, tracker, util.MESSAGE_STOCK, order)
+	util.Pub(h.broker, ctx, util.CHANNEL_STOCK, tracker, util.MESSAGE_STOCK, order)
 }
 
 func (h *paymentRouteHandler) CancelOrder(ctx context.Context, order string) {

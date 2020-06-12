@@ -29,7 +29,7 @@ var ErrNil = errors.New("value does not exist")
 
 type orderRouteHandler struct {
 	orderStore orderStore
-	redis      *redis.Client
+	broker     *redis.Client
 	ctxs       *sync.Map
 	resps      *sync.Map
 }
@@ -46,7 +46,7 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 
 	h := &orderRouteHandler{
 		orderStore: store,
-		redis:      conn.Redis,
+		broker:     conn.Broker,
 		ctxs:       &sync.Map{},
 		resps:      &sync.Map{},
 	}
@@ -60,7 +60,7 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 func (h *orderRouteHandler) handleEvents() {
 	ctx := context.Background()
 
-	pubsub := h.redis.Subscribe(ctx, util.CHANNEL_ORDER)
+	pubsub := h.broker.Subscribe(ctx, util.CHANNEL_ORDER)
 
 	// Wait for confirmation that subscription is created before publishing anything.
 	_, err := pubsub.Receive(ctx)
@@ -168,7 +168,7 @@ func (h *orderRouteHandler) CheckoutOrder(ctx *fasthttp.RequestCtx) {
 	h.ctxs.Store(trackID, ctx)
 
 	// Send message to issue order payment
-	err = h.redis.Publish(ctx, util.CHANNEL_PAYMENT, fmt.Sprintf("%s#%s#%s", trackID, util.MESSAGE_PAY, order)).Err()
+	err = h.broker.Publish(ctx, util.CHANNEL_PAYMENT, fmt.Sprintf("%s#%s#%s", trackID, util.MESSAGE_PAY, order)).Err()
 	if err != nil {
 		logrus.WithError(err).Error("unable to publish message")
 		util.InternalServerError(ctx)
