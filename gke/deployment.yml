@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: users
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: users
+  template:
+    metadata:
+      labels:
+        app: users
+    spec:
+      containers:
+      - name: users
+        image: eu.gcr.io/nice-script-280016/redishop
+        ports:
+        - containerPort: 8000
+        env:
+          - name: BROKER_URL
+            value: "broker-redis-master"
+          - name: REDIS_URL
+            value: "users-redis-master"
+          - name: SERVICE
+            value: "user"
+          - name: BACKEND
+            value: "redis"
+        resources:
+          limits:
+            cpu: 250m
+          requests:
+            cpu: 100m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stock
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stock
+  template:
+    metadata:
+      labels:
+        app: stock
+    spec:
+      containers:
+      - name: stock
+        image: eu.gcr.io/nice-script-280016/redishop
+        ports:
+        - containerPort: 8000
+        env:
+          - name: BROKER_URL
+            value: "broker-redis-master"
+          - name: REDIS_URL
+            value: "stock-redis-master"
+          - name: SERVICE
+            value: "stock"
+          - name: BACKEND
+            value: "redis"
+        resources:
+          limits:
+            cpu: 250m
+          requests:
+            cpu: 100m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orders
+  template:
+    metadata:
+      labels:
+        app: orders
+    spec:
+      containers:
+      - name: orders
+        image: eu.gcr.io/nice-script-280016/redishop
+        ports:
+        - containerPort: 8000
+        env:
+          - name: BROKER_URL
+            value: "broker-redis-master"
+          - name: REDIS_URL
+            value: "orders-redis-master"
+          - name: SERVICE
+            value: "order"
+          - name: BACKEND
+            value: "redis"
+          - name: "URL_STOCK"
+            value: "http://stock"
+        resources:
+          limits:
+            cpu: 250m
+          requests:
+            cpu: 100m
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payments
+  template:
+    metadata:
+      labels:
+        app: payments
+    spec:
+      containers:
+      - name: payments
+        image: eu.gcr.io/nice-script-280016/redishop
+        ports:
+        - containerPort: 8000
+        env:
+          - name: BROKER_URL
+            value: "broker-redis-master"
+          - name: REDIS_URL
+            value: "payments-redis-master"
+          - name: SERVICE
+            value: "payment"
+          - name: BACKEND
+            value: "redis"
+          - name: "URL_USER"
+            value: "http://users"
+        resources:
+          limits:
+            cpu: 250m
+          requests:
+            cpu: 100m

@@ -1,2 +1,9 @@
-persistentVolume:
-  size: 4Gi
+image:
+  tag: 5.0.6
+usePassword: false
+master:
+  persistence:
+    size: 2Gi
+slave:
+  persistence:
+    size: 2Gi
