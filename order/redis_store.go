@@ -81,9 +81,9 @@ func (s *redisOrderStore) Find(ctx *fasthttp.RequestCtx, orderID string) {
 
 	// Extract [...] part of the order, remove "->#" (cost mapping) from string and assemble string again
 	itemsSplit := strings.Split(get.Val(), "items\": ")
-	arraySplit := strings.Split(itemsSplit[1], ",")
+	arraySplit := strings.Split(itemsSplit[1], ", ")
 	arraySplit[0] = itemStringToJSONString(arraySplit[0])
-	itemsSplit[1] = strings.Join(arraySplit, ",")
+	itemsSplit[1] = strings.Join(arraySplit, ", ")
 	json := strings.Join(itemsSplit, "items\": ")
 
 	util.JSONResponse(ctx, fasthttp.StatusOK, fmt.Sprintf("%s, \"paid\": %t}", json[:len(json)-1], strings.Contains(string(statusResp), "true")))

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/sirupsen/logrus"
 )
 
 func itemStringToJSONString(items string) string {
@@ -32,7 +34,8 @@ func itemStringToMap(items string) map[string]int {
 		item := strings.Split(itemSplit[i], "->")
 		val, err := strconv.Atoi(item[1])
 		if err != nil {
-			panic(fmt.Sprintf("invalid string representation of item, %s", itemSplit[i]))
+			logrus.WithError(err).WithField("item", itemSplit[i]).WithField("items", items).Error("invalid representation of item")
+			continue
 		}
 		m[item[0]] = val
 	}
