@@ -69,7 +69,8 @@ func Start() {
 		// TODO: enable password access for redis
 		// https://github.com/go-redis/redis/pull/1325
 		// Password: viper.GetString("broker.password"),
-		DB: 0, // use default DB
+		DB:       0, // use default DB
+		PoolSize: 1000,
 	})
 	err := client.Ping(context.Background()).Err()
 	if err != nil {
