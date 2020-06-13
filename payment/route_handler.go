@@ -45,7 +45,8 @@ func NewRouteHandler(conn *util.Connection) *paymentRouteHandler {
 func (h *paymentRouteHandler) handleEvents() {
 	ctx := context.Background()
 
-	pubsub := h.broker.Subscribe(ctx, util.CHANNEL_PAYMENT)
+	channel := util.SetupSubChannel(ctx, h.broker, util.CHANNEL_PAYMENT)
+	pubsub := h.broker.Subscribe(ctx, channel)
 
 	// Wait for confirmation that subscription is created before publishing anything.
 	_, err := pubsub.Receive(ctx)
@@ -53,9 +54,8 @@ func (h *paymentRouteHandler) handleEvents() {
 		logrus.WithError(err).Panic("error listening to channel")
 	}
 
-	var rm *redis.Message
-
 	// Go channel which receives messages.
+	var rm *redis.Message
 	ch := pubsub.Channel()
 	for rm = range ch {
 		s := strings.Split(rm.Payload, "#")
@@ -93,7 +93,7 @@ func (h *paymentRouteHandler) CancelOrder(ctx context.Context, order string) {
 
 	err := h.paymentStore.Cancel(ctx, userID, orderID)
 	if err != nil {
-		logrus.WithError(err).Error("unable to revert order payment")
+		logrus.WithError(err).Info("unable to revert order payment")
 	}
 }
 

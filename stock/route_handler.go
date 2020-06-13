@@ -49,7 +49,8 @@ func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
 func (h *stockRouteHandler) handleEvents() {
 	ctx := context.Background()
 
-	pubsub := h.broker.Subscribe(ctx, util.CHANNEL_STOCK)
+	channel := util.SetupSubChannel(ctx, h.broker, util.CHANNEL_STOCK)
+	pubsub := h.broker.Subscribe(ctx, channel)
 
 	// Wait for confirmation that subscription is created before publishing anything.
 	_, err := pubsub.Receive(ctx)
@@ -57,9 +58,8 @@ func (h *stockRouteHandler) handleEvents() {
 		logrus.WithError(err).Panic("error listening to channel")
 	}
 
-	var rm *redis.Message
-
 	// Go channel which receives messages.
+	var rm *redis.Message
 	ch := pubsub.Channel()
 	for rm = range ch {
 		s := strings.Split(rm.Payload, "#")

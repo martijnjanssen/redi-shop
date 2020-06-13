@@ -60,7 +60,8 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 func (h *orderRouteHandler) handleEvents() {
 	ctx := context.Background()
 
-	pubsub := h.broker.Subscribe(ctx, util.CHANNEL_ORDER)
+	_ = util.SetupSubChannel(ctx, h.broker, util.CHANNEL_ORDER)
+	pubsub := h.broker.PSubscribe(ctx, fmt.Sprintf("%s.*", util.CHANNEL_ORDER))
 
 	// Wait for confirmation that subscription is created before publishing anything.
 	_, err := pubsub.Receive(ctx)
@@ -68,14 +69,12 @@ func (h *orderRouteHandler) handleEvents() {
 		logrus.WithError(err).Panic("error listening to channel")
 	}
 
-	var rm *redis.Message
-
 	// Go channel which receives messages.
+	var rm *redis.Message
 	ch := pubsub.Channel()
 	for rm = range ch {
 		s := strings.Split(rm.Payload, "#")
 		h.resps.Store(s[0], s[1])
-
 	}
 
 	logrus.Fatal("SHOULD NEVER REACH THIS")
