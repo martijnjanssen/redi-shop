@@ -10,6 +10,14 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Script with condition checking
+var decrByXX = redis.NewScript(`
+		if tonumber(redis.call("GET", KEYS[1])) - ARGV[1] > -1 then
+      return redis.call("DECRBY", KEYS[1], ARGV[1])
+    end
+    return false
+	`)
+
 type redisUserStore struct {
 	store *redis.Client
 }
@@ -66,31 +74,12 @@ func (s *redisUserStore) Find(ctx *fasthttp.RequestCtx, userID string) {
 }
 
 func (s *redisUserStore) SubtractCredit(ctx *fasthttp.RequestCtx, userID string, amount int) {
-	get := s.store.Get(ctx, userID)
-	if get.Err() == redis.Nil {
+	res := decrByXX.Run(ctx, s.store, []string{userID}, amount)
+	if res.Err() == redis.Nil {
 		util.NotFound(ctx)
 		return
-	} else if get.Err() != nil {
-		logrus.WithError(get.Err()).Error("unable to get credit to subtract")
-		util.InternalServerError(ctx)
-		return
-	}
-
-	credit, err := get.Int()
-	if err != nil {
-		logrus.WithError(err).Error("unable to convert credit")
-		util.InternalServerError(ctx)
-		return
-	}
-
-	if credit-amount < 0 {
-		util.BadRequest(ctx)
-		return
-	}
-
-	decr := s.store.DecrBy(ctx, userID, int64(amount))
-	if decr.Err() != nil {
-		logrus.WithError(decr.Err()).Error("unable to decrement credit")
+	} else if res.Err() != nil {
+		logrus.WithError(res.Err()).Error("unable to subtract credit")
 		util.InternalServerError(ctx)
 		return
 	}
