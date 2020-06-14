@@ -47,6 +47,11 @@ func Start() {
 			}
 		}()
 
+		err = db.Exec("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"").Error
+		if err != nil {
+			logrus.WithError(err).Error("unable to create extension")
+		}
+
 		conn.Postgres = db
 
 	case util.REDIS:
@@ -92,13 +97,12 @@ func Start() {
 	// Start listening to incoming requests
 	logrus.WithField("service", service).Info("Redi-shop started, awaiting requests...")
 	server := fasthttp.Server{
-		Concurrency: 256 * 1024,
-		// MaxConnsPerIP: 512,
-		MaxConnsPerIP: 1024,
+		Concurrency:   256 * 1024,
+		MaxConnsPerIP: 5 * 1024,
 		IdleTimeout:   20 * time.Second,
 		Handler:       handlerFn(conn),
 	}
-	err = server.ListenAndServe(":8000")
+	err = server.ListenAndServe(fmt.Sprintf(":%d", viper.GetInt("port")))
 	if err != nil {
 		logrus.WithError(err).Fatal("error while listening")
 	}
