@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/gofrs/uuid"
@@ -32,8 +31,9 @@ type orderRouteHandler struct {
 	broker     *redis.Client
 	urls       util.Services
 
-	ctxs  *sync.Map
-	resps *sync.Map
+	wgs   map[string]*sync.WaitGroup
+	resps map[string]string
+	lock  *sync.Mutex
 
 	channelID string
 }
@@ -52,12 +52,12 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 		orderStore: store,
 		broker:     conn.Broker,
 		urls:       conn.URL,
-		ctxs:       &sync.Map{},
-		resps:      &sync.Map{},
+		wgs:        map[string]*sync.WaitGroup{},
+		resps:      map[string]string{},
+		lock:       &sync.Mutex{},
 		channelID:  uuid.Must(uuid.NewV4()).String(),
 	}
 
-	go h.respondCtxs()
 	go h.handleEvents()
 
 	return h
@@ -79,46 +79,20 @@ func (h *orderRouteHandler) handleEvents() {
 	ch := pubsub.Channel()
 	for rm = range ch {
 		s := strings.Split(rm.Payload, "#")
-		h.resps.Store(s[1], s[2])
+
+		h.lock.Lock()
+		h.resps[s[1]] = s[2]
+		wg, ok := h.wgs[s[1]]
+		h.lock.Unlock()
+
+		if !ok {
+			logrus.Error("could not get waitgroup")
+			continue
+		}
+		wg.Done()
 	}
 
 	logrus.Fatal("SHOULD NEVER REACH THIS")
-}
-
-func (h *orderRouteHandler) respondCtxs() {
-	for {
-		var toRemove []interface{}
-		h.resps.Range(func(key interface{}, val interface{}) bool {
-			c, ok := h.ctxs.Load(key)
-			if !ok {
-				return true
-			}
-			ctx, _ := c.(*fasthttp.RequestCtx)
-			message, _ := val.(string)
-
-			switch message {
-			case util.MESSAGE_ORDER_SUCCESS:
-				util.Ok(ctx)
-			case util.MESSAGE_ORDER_BADREQUEST:
-				util.BadRequest(ctx)
-			case util.MESSAGE_ORDER_INTERNAL:
-				util.InternalServerError(ctx)
-			default:
-				logrus.WithField("message", message).Error("unknown message")
-			}
-
-			toRemove = append(toRemove, key)
-
-			return true
-		})
-
-		for i := range toRemove {
-			h.ctxs.Delete(toRemove[i])
-			h.resps.Delete(toRemove[i])
-		}
-
-		time.Sleep(5 * time.Millisecond)
-	}
 }
 
 // Creates order for given user, and returns an order ID
@@ -169,8 +143,37 @@ func (h *orderRouteHandler) CheckoutOrder(ctx *fasthttp.RequestCtx) {
 	}
 
 	trackID := uuid.Must(uuid.NewV4()).String()
-	h.ctxs.Store(trackID, ctx)
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	h.lock.Lock()
+	h.wgs[trackID] = wg
+	h.lock.Unlock()
 
 	// Send message to issue order payment
 	util.Pub(h.urls.Payment, "payment", h.channelID, trackID, util.MESSAGE_PAY, order)
+
+	wg.Wait()
+
+	h.lock.Lock()
+	message, ok := h.resps[trackID]
+	delete(h.resps, trackID)
+	delete(h.wgs, trackID)
+	h.lock.Unlock()
+
+	if !ok {
+		logrus.Error("could not get response from map")
+		util.InternalServerError(ctx)
+		return
+	}
+
+	switch message {
+	case util.MESSAGE_ORDER_SUCCESS:
+		util.Ok(ctx)
+	case util.MESSAGE_ORDER_BADREQUEST:
+		util.BadRequest(ctx)
+	case util.MESSAGE_ORDER_INTERNAL:
+		util.InternalServerError(ctx)
+	default:
+		logrus.WithField("message", message).Error("unknown message")
+	}
 }

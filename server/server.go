@@ -98,8 +98,8 @@ func Start() {
 	logrus.WithField("service", service).Info("Redi-shop started, awaiting requests...")
 	server := fasthttp.Server{
 		Concurrency:   256 * 1024,
-		MaxConnsPerIP: 5 * 1024,
-		IdleTimeout:   20 * time.Second,
+		MaxConnsPerIP: 3 * 1024,
+		IdleTimeout:   10 * time.Second,
 		Handler:       handlerFn(conn),
 	}
 	err = server.ListenAndServe(fmt.Sprintf(":%d", viper.GetInt("port")))

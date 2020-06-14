@@ -64,7 +64,7 @@ func initConfig() {
 	}
 
 	// Default config values
-	viper.SetDefault("port", "8080")
+	viper.SetDefault("port", "8000")
 
 	viper.SetDefault("postgres.url", "localhost")
 	viper.SetDefault("postgres.port", "5432")

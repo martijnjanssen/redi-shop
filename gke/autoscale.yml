@@ -8,7 +8,7 @@ spec:
     kind: Deployment
     name: users
   minReplicas: 1
-  maxReplicas: 10
+  maxReplicas: 100
   metrics:
   - type: Resource
     resource:
@@ -27,7 +27,7 @@ spec:
     kind: Deployment
     name: stock
   minReplicas: 1
-  maxReplicas: 10
+  maxReplicas: 100
   metrics:
   - type: Resource
     resource:
@@ -46,7 +46,7 @@ spec:
     kind: Deployment
     name: orders
   minReplicas: 1
-  maxReplicas: 10
+  maxReplicas: 100
   metrics:
   - type: Resource
     resource:
@@ -65,7 +65,7 @@ spec:
     kind: Deployment
     name: payments
   minReplicas: 1
-  maxReplicas: 10
+  maxReplicas: 100
   metrics:
   - type: Resource
     resource:

@@ -28,11 +28,19 @@ spec:
           - name: SERVICE
             value: "user"
           - name: BACKEND
-            # value: "postgres"
-            value: "redis"
+            value: "postgres"
+            # value: "redis"
+          - name: "URL_USER"
+            value: "http://users"
+          - name: "URL_ORDER"
+            value: "http://orders"
+          - name: "URL_STOCK"
+            value: "http://stock"
+          - name: "URL_PAYMENT"
+            value: "http://payments"
         resources:
           limits:
-            cpu: 250m
+            cpu: 500m
           requests:
             cpu: 100m
 ---
@@ -66,11 +74,19 @@ spec:
           - name: SERVICE
             value: "stock"
           - name: BACKEND
-            # value: "postgres"
-            value: "redis"
+            value: "postgres"
+            # value: "redis"
+          - name: "URL_USER"
+            value: "http://users"
+          - name: "URL_ORDER"
+            value: "http://orders"
+          - name: "URL_STOCK"
+            value: "http://stock"
+          - name: "URL_PAYMENT"
+            value: "http://payments"
         resources:
           limits:
-            cpu: 250m
+            cpu: 500m
           requests:
             cpu: 100m
 ---
@@ -104,13 +120,19 @@ spec:
           - name: SERVICE
             value: "order"
           - name: BACKEND
-            # value: "postgres"
-            value: "redis"
+            value: "postgres"
+            # value: "redis"
+          - name: "URL_USER"
+            value: "http://users"
+          - name: "URL_ORDER"
+            value: "http://orders"
           - name: "URL_STOCK"
             value: "http://stock"
+          - name: "URL_PAYMENT"
+            value: "http://payments"
         resources:
           limits:
-            cpu: 250m
+            cpu: 500m
           requests:
             cpu: 100m
 ---
@@ -144,12 +166,18 @@ spec:
           - name: SERVICE
             value: "payment"
           - name: BACKEND
-            # value: "postgres"
-            value: "redis"
+            value: "postgres"
+            # value: "redis"
           - name: "URL_USER"
             value: "http://users"
+          - name: "URL_ORDER"
+            value: "http://orders"
+          - name: "URL_STOCK"
+            value: "http://stock"
+          - name: "URL_PAYMENT"
+            value: "http://payments"
         resources:
           limits:
-            cpu: 250m
+            cpu: 500m
           requests:
             cpu: 100m
