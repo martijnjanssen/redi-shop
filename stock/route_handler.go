@@ -2,6 +2,7 @@ package stock
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,7 @@ type stockStore interface {
 type stockRouteHandler struct {
 	stockStore stockStore
 	broker     *redis.Client
+	urls       *util.Services
 }
 
 func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
@@ -39,42 +41,29 @@ func NewRouteHandler(conn *util.Connection) *stockRouteHandler {
 	h := &stockRouteHandler{
 		stockStore: store,
 		broker:     conn.Broker,
+		urls:       &conn.URL,
 	}
-
-	go h.handleEvents()
 
 	return h
 }
 
-func (h *stockRouteHandler) handleEvents() {
-	ctx := context.Background()
+func (h *stockRouteHandler) HandleMessage(ctx *fasthttp.RequestCtx) {
+	message := string(ctx.PostBody())
 
-	channel := util.SetupSubChannel(ctx, h.broker, util.CHANNEL_STOCK)
-	pubsub := h.broker.Subscribe(ctx, channel)
-
-	// Wait for confirmation that subscription is created before publishing anything.
-	_, err := pubsub.Receive(ctx)
-	if err != nil {
-		logrus.WithError(err).Panic("error listening to channel")
+	s := strings.Split(message, "#")
+	switch s[2] {
+	case util.MESSAGE_STOCK:
+		h.SubtractStockItems(ctx, s[0], s[1], s[3])
 	}
 
-	// Go channel which receives messages.
-	var rm *redis.Message
-	ch := pubsub.Channel()
-	for rm = range ch {
-		s := strings.Split(rm.Payload, "#")
-		switch s[1] {
-		case util.MESSAGE_STOCK:
-			go h.SubtractStockItems(ctx, s[0], s[2])
-		}
-	}
+	util.Ok(ctx)
 }
 
-func (h *stockRouteHandler) SubtractStockItems(ctx context.Context, tracker string, order string) {
+func (h *stockRouteHandler) SubtractStockItems(ctx context.Context, orderChannelID string, tracker string, order string) {
 	items := strings.Split(strings.Split(order, "\"items\": [")[1], "]")[0]
 
 	if items == "" {
-		util.Pub(h.broker, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_SUCCESS, "")
+		h.broker.Publish(ctx, fmt.Sprintf("%s.%s", util.CHANNEL_ORDER, orderChannelID), fmt.Sprintf("%s#%s#%s", tracker, util.MESSAGE_ORDER_SUCCESS, ""))
 		return
 	}
 
@@ -96,17 +85,17 @@ func (h *stockRouteHandler) SubtractStockItems(ctx context.Context, tracker stri
 			}
 		}
 
-		util.Pub(h.broker, ctx, util.CHANNEL_PAYMENT, tracker, util.MESSAGE_PAY_REVERT, order)
+		util.Pub(h.urls.Payment, "payment", orderChannelID, tracker, util.MESSAGE_PAY_REVERT, order)
 		if err == util.BAD_REQUEST {
-			util.Pub(h.broker, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_BADREQUEST, "")
+			util.PubToOrder(h.broker, ctx, orderChannelID, tracker, util.MESSAGE_ORDER_BADREQUEST)
 		} else {
-			util.Pub(h.broker, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_INTERNAL, "")
+			util.PubToOrder(h.broker, ctx, orderChannelID, tracker, util.MESSAGE_ORDER_INTERNAL)
 		}
 
 		return
 	}
 
-	util.Pub(h.broker, ctx, util.CHANNEL_ORDER, tracker, util.MESSAGE_ORDER_SUCCESS, "")
+	util.PubToOrder(h.broker, ctx, orderChannelID, tracker, util.MESSAGE_ORDER_SUCCESS)
 }
 
 // Returns success/failure, depending on the price status.

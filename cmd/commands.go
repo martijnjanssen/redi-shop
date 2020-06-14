@@ -58,7 +58,7 @@ func initConfig() {
 	if err != nil {
 		logrus.WithError(err).Fatal("unable to bind backend flag to config value")
 	}
-	err := viper.BindPFlag("port", rootCmd.Flags().Lookup("port"))
+	err = viper.BindPFlag("port", rootCmd.Flags().Lookup("port"))
 	if err != nil {
 		logrus.WithError(err).Fatal("unable to bind port flag to config value")
 	}

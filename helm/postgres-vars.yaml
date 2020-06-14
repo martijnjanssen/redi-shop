@@ -1,0 +1,5 @@
+postgresqlDatabase: redi
+postgresqlPassword: postgres
+
+persistence:
+  size: 2Gi

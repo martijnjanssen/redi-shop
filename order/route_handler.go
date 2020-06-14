@@ -30,8 +30,12 @@ var ErrNil = errors.New("value does not exist")
 type orderRouteHandler struct {
 	orderStore orderStore
 	broker     *redis.Client
-	ctxs       *sync.Map
-	resps      *sync.Map
+	urls       util.Services
+
+	ctxs  *sync.Map
+	resps *sync.Map
+
+	channelID string
 }
 
 func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
@@ -47,8 +51,10 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 	h := &orderRouteHandler{
 		orderStore: store,
 		broker:     conn.Broker,
+		urls:       conn.URL,
 		ctxs:       &sync.Map{},
 		resps:      &sync.Map{},
+		channelID:  uuid.Must(uuid.NewV4()).String(),
 	}
 
 	go h.respondCtxs()
@@ -60,8 +66,7 @@ func NewRouteHandler(conn *util.Connection) *orderRouteHandler {
 func (h *orderRouteHandler) handleEvents() {
 	ctx := context.Background()
 
-	_ = util.SetupSubChannel(ctx, h.broker, util.CHANNEL_ORDER)
-	pubsub := h.broker.PSubscribe(ctx, fmt.Sprintf("%s.*", util.CHANNEL_ORDER))
+	pubsub := h.broker.PSubscribe(ctx, fmt.Sprintf("%s.%s", util.CHANNEL_ORDER, h.channelID))
 
 	// Wait for confirmation that subscription is created before publishing anything.
 	_, err := pubsub.Receive(ctx)
@@ -74,7 +79,7 @@ func (h *orderRouteHandler) handleEvents() {
 	ch := pubsub.Channel()
 	for rm = range ch {
 		s := strings.Split(rm.Payload, "#")
-		h.resps.Store(s[0], s[1])
+		h.resps.Store(s[1], s[2])
 	}
 
 	logrus.Fatal("SHOULD NEVER REACH THIS")
@@ -167,10 +172,5 @@ func (h *orderRouteHandler) CheckoutOrder(ctx *fasthttp.RequestCtx) {
 	h.ctxs.Store(trackID, ctx)
 
 	// Send message to issue order payment
-	err = h.broker.Publish(ctx, util.CHANNEL_PAYMENT, fmt.Sprintf("%s#%s#%s", trackID, util.MESSAGE_PAY, order)).Err()
-	if err != nil {
-		logrus.WithError(err).Error("unable to publish message")
-		util.InternalServerError(ctx)
-		return
-	}
+	util.Pub(h.urls.Payment, "payment", h.channelID, trackID, util.MESSAGE_PAY, order)
 }

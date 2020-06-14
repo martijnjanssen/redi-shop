@@ -57,6 +57,7 @@ func getStockRouter(conn *util.Connection) fasthttp.RequestHandler {
 	r.POST("/stock/subtract/{item_id}/{number}", h.SubtractStockNumber)
 	r.POST("/stock/add/{item_id}/{number}", h.AddStockNumber)
 	r.POST("/stock/item/create/{price}", h.CreateStockItem)
+	r.POST("/stock/message", h.HandleMessage)
 
 	return r.Handler
 }
@@ -67,9 +68,8 @@ func getPaymentRouter(conn *util.Connection) fasthttp.RequestHandler {
 	r := router.New()
 	r.PanicHandler = panicHandler
 
-	// r.POST("/payment/pay/{user_id}/{order_id}/{amount}", h.PayOrder)
-	// r.POST("/payment/cancel/{user_id}/{order_id}", h.CancelOrder)
 	r.GET("/payment/status/{order_id}", h.GetPaymentStatus)
+	r.POST("/payment/message", h.HandleMessage)
 
 	return r.Handler
 }

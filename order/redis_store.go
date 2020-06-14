@@ -26,20 +26,20 @@ func newRedisOrderStore(c *redis.Client, urls *util.Services) *redisOrderStore {
 }
 
 func (s *redisOrderStore) Create(ctx *fasthttp.RequestCtx, userID string) {
-	orderID := uuid.Must(uuid.NewV4()).String()
 	json := fmt.Sprintf("{\"user_id\": \"%s\", \"items\": [], \"cost\": 0}", userID)
 
-	set := s.store.SetNX(ctx, orderID, json, 0)
-	if set.Err() != nil {
-		logrus.WithError(set.Err()).Error("unable to create new order")
-		util.InternalServerError(ctx)
-		return
-	}
+	var orderID string
+	created := false
+	for !created {
+		orderID = uuid.Must(uuid.NewV4()).String()
+		set := s.store.SetNX(ctx, orderID, json, 0)
+		if set.Err() != nil {
+			logrus.WithError(set.Err()).Error("unable to create new order")
+			util.InternalServerError(ctx)
+			return
+		}
 
-	if !set.Val() {
-		logrus.Error("order with this ID already exists")
-		util.InternalServerError(ctx)
-		return
+		created = set.Val()
 	}
 
 	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"order_id\": \"%s\"}", orderID))

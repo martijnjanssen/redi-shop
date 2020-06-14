@@ -23,9 +23,12 @@ spec:
             value: "broker-redis-master"
           - name: REDIS_URL
             value: "users-redis-master"
+          - name: POSTGRES_URL
+            value: "users-postgresql"
           - name: SERVICE
             value: "user"
           - name: BACKEND
+            # value: "postgres"
             value: "redis"
         resources:
           limits:
@@ -58,9 +61,12 @@ spec:
             value: "broker-redis-master"
           - name: REDIS_URL
             value: "stock-redis-master"
+          - name: POSTGRES_URL
+            value: "stock-postgresql"
           - name: SERVICE
             value: "stock"
           - name: BACKEND
+            # value: "postgres"
             value: "redis"
         resources:
           limits:
@@ -93,9 +99,12 @@ spec:
             value: "broker-redis-master"
           - name: REDIS_URL
             value: "orders-redis-master"
+          - name: POSTGRES_URL
+            value: "users-postgresql"
           - name: SERVICE
             value: "order"
           - name: BACKEND
+            # value: "postgres"
             value: "redis"
           - name: "URL_STOCK"
             value: "http://stock"
@@ -130,9 +139,12 @@ spec:
             value: "broker-redis-master"
           - name: REDIS_URL
             value: "payments-redis-master"
+          - name: POSTGRES_URL
+            value: "payments-postgresql"
           - name: SERVICE
             value: "payment"
           - name: BACKEND
+            # value: "postgres"
             value: "redis"
           - name: "URL_USER"
             value: "http://users"

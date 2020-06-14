@@ -30,19 +30,18 @@ func newRedisUserStore(c *redis.Client) *redisUserStore {
 }
 
 func (s *redisUserStore) Create(ctx *fasthttp.RequestCtx) {
-	userID := uuid.Must(uuid.NewV4()).String()
+	var userID string
+	created := false
+	for !created {
+		userID = uuid.Must(uuid.NewV4()).String()
+		set := s.store.SetNX(ctx, userID, 0, 0)
+		if set.Err() != nil {
+			logrus.WithError(set.Err()).Error("unable to create new order")
+			util.InternalServerError(ctx)
+			return
+		}
 
-	set := s.store.SetNX(ctx, userID, 0, 0)
-	if set.Err() != nil {
-		logrus.WithError(set.Err()).Error("unable to create user")
-		util.InternalServerError(ctx)
-		return
-	}
-
-	if !set.Val() {
-		logrus.Error("user already exists")
-		util.InternalServerError(ctx)
-		return
+		created = set.Val()
 	}
 
 	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"user_id\": \"%s\"}", userID))

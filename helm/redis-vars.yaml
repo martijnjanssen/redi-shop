@@ -4,6 +4,5 @@ usePassword: false
 master:
   persistence:
     size: 2Gi
-slave:
-  persistence:
-    size: 2Gi
+cluster:
+  enabled: false

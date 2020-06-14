@@ -25,24 +25,23 @@ func newRedisStockStore(c *redis.Client) *redisStockStore {
 }
 
 func (s *redisStockStore) Create(ctx *fasthttp.RequestCtx, price int) {
-	ID := uuid.Must(uuid.NewV4()).String()
 	json := fmt.Sprintf("{\"price\": %d, \"stock\": 0}", price)
 
-	set := s.store.SetNX(ctx, ID, json, 0)
-	if set.Err() != nil {
-		logrus.WithError(set.Err()).Error("unable to create stock item")
-		util.InternalServerError(ctx)
-		return
+	var itemID string
+	created := false
+	for !created {
+		itemID = uuid.Must(uuid.NewV4()).String()
+		set := s.store.SetNX(ctx, itemID, json, 0)
+		if set.Err() != nil {
+			logrus.WithError(set.Err()).Error("unable to create new order")
+			util.InternalServerError(ctx)
+			return
+		}
+
+		created = set.Val()
 	}
 
-	if !set.Val() {
-		logrus.Error("stock item already exists")
-		util.InternalServerError(ctx)
-		return
-	}
-
-	response := fmt.Sprintf("{\"item_id\": \"%s\"}", ID)
-	util.JSONResponse(ctx, fasthttp.StatusCreated, response)
+	util.JSONResponse(ctx, fasthttp.StatusCreated, fmt.Sprintf("{\"item_id\": \"%s\"}", itemID))
 }
 
 func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, itemID string, amount int) {
