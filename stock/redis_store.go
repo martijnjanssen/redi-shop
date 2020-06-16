@@ -13,6 +13,24 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+// Script with condition checking
+var decrByXX = redis.NewScript(`
+	local value = redis.call("GET", KEYS[1])
+	local stockValue
+	local priceValue
+	for iter in string.gmatch(value, "(%d+)}") do
+    	stockValue=iter
+	end
+	for iter in string.gmatch(value, "(%d+),") do
+    	priceValue=iter
+	end
+	local updatedValue = tonumber(stockValue) - ARGV[1]
+	if  updatedValue > -1 then
+  		return redis.call("SET", KEYS[1], string.format('{%s: %d,%s: %d}','"price"',tonumber(priceValue),'"stock"',updatedValue))
+	end
+    	return false
+    `)
+
 type redisStockStore struct {
 	store *redis.Client
 }
@@ -48,8 +66,10 @@ func (s *redisStockStore) SubtractStock(ctx *fasthttp.RequestCtx, itemID string,
 	err := s.subtract(ctx, itemID, amount)
 	if err == util.INTERNAL_ERR {
 		util.InternalServerError(ctx)
+		return
 	} else if err == util.BAD_REQUEST {
 		util.BadRequest(ctx)
+		return
 	}
 
 	util.Ok(ctx)
@@ -81,34 +101,13 @@ func (s *redisStockStore) Find(ctx *fasthttp.RequestCtx, ID string) {
 }
 
 func (s *redisStockStore) subtract(ctx context.Context, ID string, amount int) error {
-	get := s.store.Get(ctx, ID)
-	if get.Err() == redis.Nil {
-		return util.BAD_REQUEST
-	} else if get.Err() != nil {
-		logrus.WithError(get.Err()).Error("unable to find stock item")
-		return util.INTERNAL_ERR
-	}
-
-	json := get.Val()
-	jsonSplit := strings.Split(json, ": ")
-	stock, err := strconv.Atoi(jsonSplit[2][0 : len(jsonSplit[2])-1])
-	if err != nil {
-		logrus.WithError(err).Error("cannot parse stock amount")
-		return util.INTERNAL_ERR
-	}
-
-	if stock-amount < 0 {
-		return util.BAD_REQUEST
-	}
-
-	jsonSplit[2] = fmt.Sprintf("%d}", stock-amount)
-	updatedJson := strings.Join(jsonSplit, ": ")
-
-	set := s.store.Set(ctx, ID, updatedJson, 0)
-	if set.Err() != nil {
-		logrus.WithError(set.Err()).Error("unable to update stock item")
-		return util.INTERNAL_ERR
-	}
+	res := decrByXX.Run(ctx, s.store, []string{ID}, amount)
+    if res.Err() == redis.Nil {
+        return util.BAD_REQUEST
+    } else if res.Err() != nil {
+        logrus.WithError(res.Err()).Error("unable to subtract stock")
+        return util.INTERNAL_ERR
+    }
 
 	return nil
 }
