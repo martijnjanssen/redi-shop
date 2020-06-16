@@ -26,7 +26,7 @@ var decrByXX = redis.NewScript(`
 	end
 	local updatedValue = tonumber(stockValue) - ARGV[1]
 	if  updatedValue > -1 then
-  		return redis.call("SET", KEYS[1], string.format('{%s: %d,%s: %d}','"price"',tonumber(priceValue),'"stock"',updatedValue))
+  		return redis.call("SET", KEYS[1], string.format('{"price": %d,"stock": %d}', tonumber(priceValue), updatedValue))
 	end
     	return false
     `)
